@@ -1,0 +1,40 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Mini Player</title>
+<link rel="stylesheet" href="/style.css"></head><body>
+<main class="card" id="setup" hidden>
+ <h1>Configurar Spotify</h1>
+ <p class="lead">Se hace una sola vez (unos 3 minutos). Necesitás Spotify Premium.</p>
+ <ol id="steps">
+  <li>Abrí el panel y creá una app (el nombre es libre). Marcá <b>Web API</b> y <b>Web Playback SDK</b>.<button class="pill s" id="dash">Abrir panel de Spotify</button></li>
+  <li>En <b>Redirect URI</b> poné <code>http://127.0.0.1:8888/</code> y guardá.<button class="pill s" id="copy">Copiar dirección</button></li>
+  <li>Copiá el <b>Client ID</b> de tu app y pegalo acá:</li>
+ </ol>
+ <input id="cid" placeholder="Client ID" autocomplete="off" spellcheck="false">
+ <button class="pill" id="login">Conectar con Spotify</button>
+ <p id="msg" class="note"></p>
+</main>
+<main class="card" id="player" hidden>
+ <div id="top">
+  <label id="volbox"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg><input id="vol" type="range" min="0" max="100" aria-label="Volumen"></label>
+  <button class="btn mini" id="shuf" title="Aleatorio"><svg viewBox="0 0 24 24"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button>
+  <button class="btn mini" id="libbtn" title="Biblioteca y buscador (Esc para volver)"><svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg></button>
+  <button class="btn mini" id="pin" title="Siempre encima"><svg viewBox="0 0 24 24"><path d="M14 4v5l2 3v2h-4v6l-1 1-1-1v-6H6v-2l2-3V4z"/></svg></button>
+  <button class="btn mini" id="close" title="Cerrar"><svg viewBox="0 0 24 24"><path d="m6 7.4 1.4-1.4 4.6 4.6L16.6 6 18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6z"/></svg></button>
+ </div>
+ <section id="now">
+ <div id="cover"></div>
+ <div id="info"><div id="txt"><div id="title">Nada sonando</div><div id="artist">Pegá un link de Spotify (Ctrl+V)</div></div>
+  <button class="btn" id="like" title="Guardar en tus Me gusta" hidden><svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></button></div>
+ </section>
+ <section id="library" hidden>
+  <input id="q" placeholder="Buscar o pegar un link" autocomplete="off" spellcheck="false">
+  <ul id="list"></ul>
+ </section>
+ <div id="time"><span id="cur">0:00</span><div id="bar"><div id="track"><div id="fill"></div><div id="knob"></div></div></div><span id="dur">0:00</span></div>
+ <div id="ctl">
+  <button class="btn sm" id="prev" title="Anterior"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zM9.5 12 18 6v12z"/></svg></button>
+  <button class="btn lg" id="play" title="Pausa / Reanudar"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+  <button class="btn sm" id="next" title="Siguiente"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18V6l8.5 6z"/></svg></button>
+ </div>
+ <p id="status" class="note"></p>
+</main>
+<script src="/app.js"></script></body></html>

@@ -1,0 +1,34 @@
+appId: com.miniplayer.app
+productName: Mini Player
+directories:
+  output: dist
+
+# Reutiliza el Electron con Widevine (castLabs) de node_modules en lugar de descargar la build estándar.
+electronDist: node_modules/electron/dist
+npmRebuild: false
+
+# Firma VMP de EVS tras el empaquetado y antes de generar los instaladores (requerida por Widevine en Windows).
+afterSign: build/evs-sign.js
+
+files:
+  - main.js
+  - preload.js
+  - index.html
+  - app.js
+  - style.css
+  - icon.png
+  - package.json
+  - node_modules/@fontsource-variable/inter/**
+
+win:
+  icon: icon.png
+  target:
+    - nsis       # instalador por usuario (sin elevación de privilegios)
+    - portable   # ejecutable autónomo, sin instalación
+
+nsis:
+  oneClick: true
+  perMachine: false
+
+portable:
+  artifactName: ${productName}-portable-${version}.exe

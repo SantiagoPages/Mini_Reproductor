@@ -1,0 +1,75 @@
+MINI PLAYER - CÓMO CONFIGURARLO
+Se hace una sola vez y lleva unos 3 minutos.
+
+
+QUÉ NECESITÁS
+- Una cuenta de Spotify PREMIUM. El reproductor no funciona con cuentas gratuitas.
+- Entrar al panel de Spotify para desarrolladores. Es gratis y se usa el mismo
+  usuario de Spotify de siempre. No hace falta saber programar.
+
+
+POR QUÉ HACE FALTA
+Spotify exige que cada app tenga su propio "Client ID". Esta app no trae ninguno
+incluido, así que creás el tuyo. Es solo un código que identifica a tu app: no es
+una contraseña y no da acceso a tu cuenta. Todo queda guardado, cifrado, en tu PC.
+
+
+PASOS
+
+1. Entrá a  https://developer.spotify.com/dashboard
+   e iniciá sesión con tu cuenta de Spotify. Si es tu primera vez, aceptá los
+   términos que te muestre.
+
+2. Tocá el botón  "Create app".
+
+3. Completá el formulario:
+     - App name:         el que quieras (por ejemplo: Mini Player)
+     - App description:  lo que quieras (por ejemplo: Reproductor personal)
+     - Redirect URI:     http://127.0.0.1:8888/
+                         Tiene que ser EXACTAMENTE así, con la barra "/" al
+                         final. Después tocá "Add" para agregarla.
+     - APIs / SDKs:      marcá  "Web API"  y  "Web Playback SDK"
+
+4. Aceptá los términos y tocá  "Save".
+
+5. Entrá a tu app nueva, abrí "Settings" y copiá el  "Client ID"
+   (es un código de 32 letras y números).
+
+6. Abrí Mini Player, pegá el Client ID y tocá  "Conectar con Spotify".
+   Se abre tu navegador: iniciá sesión si te lo pide y aceptá los permisos.
+   Cuando diga que ya podés volver, volvé a la ventana del reproductor.
+
+Listo. La próxima vez que abras la app entra sola, sin pedirte nada.
+
+
+CÓMO ELEGIR MÚSICA
+- Botón de la lupa: tus playlists y un buscador.
+- También podés copiar un link de Spotify (Compartir > Copiar enlace) y pegarlo
+  con Ctrl+V en la ventana del reproductor.
+
+
+PROBLEMAS FRECUENTES
+
+- Spotify dice "Invalid redirect URI" al conectar:
+  La dirección del paso 3 no coincide. Revisá que sea exactamente
+  http://127.0.0.1:8888/  (con los números, no "localhost", y con la barra final).
+
+- Se conecta pero no suena, o aparece un error de reproducción:
+  Confirmá que tu cuenta sea Premium. Si lo es, cerrá el reproductor y volvelo
+  a abrir.
+
+- Dice que el puerto 8888 está ocupado:
+  Otro programa lo está usando. Cerralo y volvé a abrir Mini Player.
+
+- Quiero empezar de cero (cambiar de cuenta o de Client ID):
+  Cerrá la app y borrá el archivo  %APPDATA%\mini-player\session.bin
+  (pegá esa ruta en la barra del Explorador de archivos de Windows).
+
+- Si tu suscripción Premium se vence, el reproductor deja de funcionar hasta que
+  la renueves, porque la app que creaste en el paso 3 depende de tu cuenta.
+
+
+NOTAS
+- Cada app creada en el panel de Spotify es personal. No compartas tu Client ID
+  si no querés que otra persona use tu app.
+- Mini Player no es un producto oficial de Spotify ni está afiliado a Spotify.

@@ -1,0 +1,15 @@
+# Dependencias y artefactos de construcción
+node_modules/
+dist/
+
+# Sesiones, credenciales y variables de entorno: nunca deben versionarse
+.env
+.env.*
+*.bin
+*.sig
+
+# Registros y archivos del sistema
+*.log
+Thumbs.db
+desktop.ini
+.vscode/
