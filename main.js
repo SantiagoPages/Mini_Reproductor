@@ -23,6 +23,10 @@ const FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
+  '/themes.js': ['themes.js', 'text/javascript; charset=utf-8'],
+  '/settings.html': ['settings.html', 'text/html; charset=utf-8'],
+  '/settings.js': ['settings.js', 'text/javascript; charset=utf-8'],
+  '/settings.css': ['settings.css', 'text/css; charset=utf-8'],
   '/inter.woff2': [path.join('node_modules', '@fontsource-variable', 'inter', 'files', 'inter-latin-wght-normal.woff2'), 'font/woff2']
 };
 // Content-Security-Policy de la interfaz. connect-src e img-src admiten https genérico porque
@@ -121,6 +125,7 @@ function setupTray() {
   tray.on('click', toggle);
   menu = Menu.buildFromTemplate([
     { label: 'Mostrar / Ocultar', click: toggle },
+    { label: 'Ajustes…', click: openSettings },
     { id: 'pin', label: 'Siempre encima', type: 'checkbox', checked: false, click: m => setPin(m.checked) },
     { type: 'separator' },
     { label: 'Salir', click: () => app.quit() }
@@ -134,6 +139,51 @@ function registerMediaKeys() {
 }
 app.on('will-quit', () => globalShortcut.unregisterAll());
 ipcMain.on('close', () => app.quit());
+
+// ---------- Ajustes de apariencia ----------
+// Preferencias visuales en un JSON dentro de userData (sin datos sensibles). Toda entrada se valida contra
+// una lista blanca antes de guardarse o difundirse.
+// Appearance preferences: JSON file in userData (nothing sensitive). Every input is validated against an
+// allow-list before being stored or broadcast.
+const isHex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+const oneOf = list => v => list.includes(v);
+const RULES = {
+  preset: oneOf(['classic', 'pure', 'light', 'neon', 'cherry', 'rainbow', 'custom']),
+  bgMode: oneOf(['dynamic', 'fixed', 'gradient', 'blur', 'rainbow']),
+  bgColor: isHex,
+  accentMode: oneOf(['white', 'custom', 'auto']),
+  accentColor: isHex,
+  blossoms: v => typeof v === 'boolean'
+};
+const DEFAULTS = { preset: 'classic', bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff', blossoms: false };
+const sanitize = o => Object.fromEntries(Object.entries(RULES).filter(([k, ok]) => ok(o?.[k])).map(([k]) => [k, o[k]]));
+const cfgFile = () => path.join(app.getPath('userData'), 'settings.json');
+let settings = { ...DEFAULTS }, saveTimer;
+try { settings = { ...DEFAULTS, ...sanitize(JSON.parse(fs.readFileSync(cfgFile(), 'utf8'))) }; } catch { /* primer inicio / first run */ }
+
+function applySettings(next) {
+  settings = next;
+  clearTimeout(saveTimer);   // escritura diferida: un selector de color emite decenas de cambios por segundo
+  saveTimer = setTimeout(() => fs.writeFile(cfgFile(), JSON.stringify(settings), e => e && console.error('Ajustes:', e.message)), 300);
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings', settings);   // vista previa en vivo
+  return settings;
+}
+ipcMain.handle('settings:get', () => settings);
+ipcMain.handle('settings:set', (e, partial) => applySettings({ ...settings, ...sanitize(partial) }));
+ipcMain.handle('settings:reset', () => applySettings({ ...DEFAULTS }));
+
+// Misma política de aislamiento para todas las ventanas. / Same isolation policy for every window.
+const WEBPREFS = { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, autoplayPolicy: 'no-user-gesture-required' };
+let settingsWin;
+function openSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); return settingsWin.focus(); }
+  settingsWin = new BrowserWindow({ width: 400, height: 600, title: 'Ajustes', resizable: false, minimizable: false, maximizable: false, webPreferences: WEBPREFS });
+  settingsWin.setMenu(null);
+  settingsWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  settingsWin.webContents.on('will-navigate', e => e.preventDefault());
+  settingsWin.loadURL(ORIGIN + '/settings.html');
+}
+ipcMain.on('open-settings', openSettings);
 // Acciones del asistente de configuración. No reciben parámetros del renderer: no hay entrada que validar.
 ipcMain.on('open-dashboard', () => shell.openExternal('https://developer.spotify.com/dashboard'));
 ipcMain.on('copy-redirect', () => clipboard.writeText(ORIGIN + '/'));
@@ -160,13 +210,18 @@ app.whenReady().then(async () => {
   win = new BrowserWindow({
     ...WIN, frame: false, transparent: true, resizable: false, hasShadow: false,
     backgroundColor: '#00000000',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, autoplayPolicy: 'no-user-gesture-required' }
+    webPreferences: WEBPREFS
   });
   // Se bloquean ventanas nuevas y la navegación fuera de la interfaz.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', e => e.preventDefault());
+  // El reproductor es la ventana principal: al cerrarlo se cierra todo, incluida la de ajustes.
+  // The player is the main window: closing it quits the app, including the settings window.
+  win.on('closed', () => app.quit());
   win.loadURL(ORIGIN + '/');
   try { setupTray(); } catch (e) { console.error('Bandeja:', e.message); }
   try { registerMediaKeys(); } catch (e) { console.error('Teclas multimedia:', e.message); }
 });
+// Red de seguridad: al salir se destruye la ventana de ajustes aunque siga abierta.
+app.on('before-quit', () => { if (settingsWin && !settingsWin.isDestroyed()) settingsWin.destroy(); });
 app.on('window-all-closed', () => app.quit());

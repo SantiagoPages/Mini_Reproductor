@@ -115,7 +115,7 @@ async function render() {
   const url = t.album.images.reduce((a, b) => (b.height || 0) > (a.height || 0) ? b : a, t.album.images[0] || {}).url;
   if (url && url !== lastCover) {
     lastCover = url; const data = await bridge.cover(url); if (!data || url !== lastCover) return;   // descarta respuestas obsoletas
-    $('cover').style.backgroundImage = `url(${data})`;
+    coverData = data; $('cover').style.backgroundImage = `url(${data})`;
     const img = new Image(); img.onload = () => { if (url === lastCover) tint(img); }; img.src = data;
   }
 }
@@ -160,15 +160,82 @@ function tint(img) {
     const [h, s, l] = toHsl(d[i], d[i + 1], d[i + 2]); if (l < .08 || l > .94 || s < .12) continue;
     const b = bk[Math.floor(h / 30) % 12], w = s * s; b.w += w; b.h += h * w; b.s += s * w; b.l += l * w;
   }
-  const best = bk.reduce((a, b) => b.w > a.w ? b : a);
-  let h = 250, s = .15, l = .25;                       // valores de respaldo para portadas sin color dominante
-  if (best.w > 0) { h = best.h / best.w; s = Math.min(.75, Math.max(.35, best.s / best.w)); l = Math.min(.4, Math.max(.22, best.l / best.w)); }
-  // Se oscurece el color hasta lograr un contraste >= 4,5:1 con texto blanco (WCAG AA); 0,17 deja margen
-  // para el degradado superpuesto.
-  // Darken until contrast against white text reaches 4.5:1 (WCAG AA); 0.17 leaves headroom for the overlay gradient.
-  while (l > .08 && relLuminance(hslToRgb(h, s, l)) > .17) l -= .02;
-  document.documentElement.style.setProperty('--bg', `hsl(${h.toFixed(0)} ${(s * 100).toFixed(0)}% ${(l * 100).toFixed(0)}%)`);
+  const ranked = bk.filter(b => b.w > 0).sort((a, b) => b.w - a.w);
+  // Se oscurece cada tono hasta contraste >= 4,5:1 con texto blanco; 0,17 deja margen para el degradado.
+  // Each tone is darkened until white text reaches 4.5:1 contrast; 0.17 leaves headroom for the overlay.
+  const tone = b => {
+    const h = b.h / b.w, s = Math.min(.75, Math.max(.35, b.s / b.w)); let l = Math.min(.4, Math.max(.22, b.l / b.w));
+    while (l > .08 && relLuminance(hslToRgb(h, s, l)) > .17) l -= .02;
+    return [h, s, l];
+  };
+  const c1 = ranked[0] ? tone(ranked[0]) : [250, .15, .25];   // respaldo: portada sin color dominante
+  const c2 = ranked[1] && ranked[1].w > ranked[0].w * .2 ? tone(ranked[1]) : [(c1[0] + 30) % 360, c1[1], Math.max(.1, c1[2] - .1)];
+  palette = [c1, c2]; paint();
 }
+
+// ---------- Apariencia ----------
+// El tema se resuelve en variables CSS (--bg, --fg, --accent...) a partir de los ajustes y de la paleta de la
+// portada actual. / The theme resolves into CSS variables from the settings and the current cover palette.
+let cfg = { bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff' };
+let palette = null, coverData = '';
+// Modo arcoíris: el tono avanza de forma continua (ciclo de ~22 s). Los colores se oscurecen igual que los de la
+// portada para que el texto blanco conserve el contraste. Se pausa con la ventana oculta y se respeta la
+// preferencia del sistema de reducir animaciones.
+// Rainbow mode: hue advances continuously (~22 s cycle). Colors are darkened like cover colors so white text keeps
+// its contrast. Paused while the window is hidden; honors the OS reduced-motion preference.
+let hue = 0, rainbowTimer = null;
+const dark = (h, s, l) => { while (l > .08 && relLuminance(hslToRgb(h, s, l)) > .17) l -= .02; return [h % 360, s, l]; };
+const rainbowPalette = h => [dark(h, .7, .4), dark(h + 50, .7, .4)];
+function setRainbow(on) {
+  clearInterval(rainbowTimer); rainbowTimer = null;
+  if (!on || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  rainbowTimer = setInterval(() => { if (!document.hidden) { hue = (hue + .8) % 360; paint(); } }, 50);
+}
+const hsl = ([h, s, l]) => `hsl(${h.toFixed(0)} ${(s * 100).toFixed(0)}% ${(l * 100).toFixed(0)}%)`;
+const hexRgb = x => { const n = parseInt(x.slice(1), 16); return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
+const rgbCss = c => `rgb(${c.map(v => Math.round(v * 255)).join(' ')})`;
+// Por encima de este umbral de luminancia, el texto oscuro contrasta más que el blanco.
+// Above this luminance threshold, dark text has more contrast than white text.
+const isLight = rgb => relLuminance(rgb) > .179;
+function paint() {
+  const [c1, c2] = cfg.bgMode === 'rainbow' ? rainbowPalette(hue) : palette || [[250, .15, .25], [250, .15, .25]], fixed = cfg.bgMode === 'fixed';
+  const light = fixed && isLight(hexRgb(cfg.bgColor));   // los demás modos siempre producen fondos oscuros
+  const bg = fixed ? cfg.bgColor : (cfg.bgMode === 'gradient' || cfg.bgMode === 'rainbow') ? `linear-gradient(160deg, ${hsl(c1)}, ${hsl(c2)})` : hsl(c1);
+  const accent = cfg.accentMode === 'custom' ? hexRgb(cfg.accentColor)
+    : cfg.accentMode === 'auto' ? hslToRgb(c1[0], Math.max(.5, c1[1]), light ? .25 : .78)
+    : light ? [.09, .1, .11] : [1, 1, 1];
+  const set = (k, v) => document.documentElement.style.setProperty(k, v);
+  set('--bg', bg); set('--fg', light ? '#16181d' : '#fff');
+  set('--btn', light ? 'rgba(0,0,0,.1)' : 'rgba(0,0,0,.28)');
+  set('--line', light ? 'rgba(0,0,0,.18)' : 'rgba(255,255,255,.22)');
+  set('--shade', light ? 'linear-gradient(160deg,rgba(255,255,255,.35),rgba(0,0,0,.06))' : 'linear-gradient(160deg,rgba(255,255,255,.1),rgba(0,0,0,.35))');
+  set('--accent', rgbCss(accent)); set('--accent-fg', isLight(accent) ? '#16181d' : '#fff');
+  const blur = cfg.bgMode === 'blur' && coverData;
+  $('bgimg').hidden = !blur; if (blur) $('bgimg').style.backgroundImage = `url(${coverData})`;
+  // Las flores son parte del tema Cherry: en cualquier otro tema (o personalizado) no se muestran.
+  // Blossoms belong to the Cherry theme only; they are hidden under any other preset or custom setup.
+  $('bloom').hidden = !(cfg.blossoms && cfg.preset === 'cherry');
+}
+// Pétalos: se crean una vez con valores aleatorios (CSSOM, compatible con la CSP) y se animan por CSS.
+// El retraso negativo reparte los pétalos a lo largo de la caída desde el primer fotograma.
+// Petals: created once with random values (CSSOM, CSP-safe) and animated in CSS; negative delays spread them
+// along the fall from the first frame. Paused while the window is hidden.
+(() => {
+  const r = (a, b) => a + Math.random() * (b - a);
+  for (let i = 0; i < 16; i++) {
+    const p = document.createElement('i'); p.className = i % 3 ? 'pa' : 'pb';
+    p.style.setProperty('--x', r(0, 100).toFixed(1) + '%');
+    p.style.setProperty('--s', r(7, 13).toFixed(1) + 'px');
+    p.style.setProperty('--d', r(9, 16).toFixed(1) + 's');
+    p.style.setProperty('--dl', (-r(0, 16)).toFixed(1) + 's');
+    p.style.setProperty('--sw', r(-30, 30).toFixed(0) + 'px');
+    $('petals').append(p);
+  }
+  document.addEventListener('visibilitychange', () => document.body.classList.toggle('paused', document.hidden));
+})();
+const applyCfg = s => { cfg = s; setRainbow(s.bgMode === 'rainbow'); paint(); };
+bridge.onSettings?.(applyCfg);
+bridge.getSettings?.().then(applyCfg);
 
 // ---------- Controles ----------
 /**
@@ -206,6 +273,7 @@ document.addEventListener('pointerup', () => from = null);
 document.addEventListener('pointercancel', () => from = null);
 $('pin').onclick = async () => $('pin').classList.toggle('on', await bridge.togglePin());
 $('close').onclick = () => bridge.close();
+$('cfg').onclick = () => bridge.openSettings();
 bridge.onPinned?.(v => $('pin').classList.toggle('on', v));
 bridge.onMedia?.(cmd => { if (!player) return; if (cmd === 'toggle') togglePlayback(); else if (cmd === 'next') player.nextTrack(); else if (cmd === 'prev') player.previousTrack(); });
 // Atajo: al pegar (Ctrl+V) un enlace de Spotify se inicia su reproducción.

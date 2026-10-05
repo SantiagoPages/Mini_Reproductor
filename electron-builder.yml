@@ -16,6 +16,10 @@ files:
   - index.html
   - app.js
   - style.css
+  - themes.js
+  - settings.html
+  - settings.js
+  - settings.css
   - icon.png
   - package.json
   - node_modules/@fontsource-variable/inter/**

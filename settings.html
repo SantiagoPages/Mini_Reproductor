@@ -1,0 +1,28 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Ajustes</title>
+<link rel="stylesheet" href="/settings.css"></head><body>
+<h1>Apariencia</h1>
+<p class="hint">Los cambios se ven al instante en el reproductor y se guardan en esta PC.</p>
+<section><h2>Temas</h2><div id="themes"></div></section>
+<section><h2>Fondo</h2>
+ <select id="bgMode" aria-label="Modo de fondo">
+  <option value="dynamic">Dinámico (color de la portada)</option>
+  <option value="fixed">Color fijo</option>
+  <option value="gradient">Degradado de dos colores de la portada</option>
+  <option value="blur">Portada difuminada</option>
+  <option value="rainbow">Arcoíris (cambio de color continuo)</option>
+ </select>
+ <label id="bgColorRow">Color del fondo <input type="color" id="bgColor"></label>
+</section>
+<section><h2>Acento</h2>
+ <select id="accentMode" aria-label="Color de acento">
+  <option value="white">Blanco</option>
+  <option value="custom">Color elegido</option>
+  <option value="auto">Tono de la portada</option>
+ </select>
+ <label id="accentColorRow">Color de acento <input type="color" id="accentColor"></label>
+</section>
+<section id="decor" hidden><h2>Decoración</h2>
+ <label>Flores de cerezo <input type="checkbox" id="blossoms"></label>
+</section>
+<button id="reset" type="button">Restablecer valores</button>
+<script src="/themes.js"></script><script src="/settings.js"></script></body></html>
