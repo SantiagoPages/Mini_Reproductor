@@ -129,13 +129,13 @@ function toHsl(r, g, b) {
   const h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
   return [h * 60, s, l];
 }
-/** HSL (h en grados; s y l en 0..1) a RGB (0..1). / HSL to RGB. */
+/** HSL (h en grados; s y l en 0..1) a RGB (0..1). */
 function hslToRgb(h, s, l) {
   const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
   const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
   return [f(0), f(8), f(4)];
 }
-/** Luminancia relativa según WCAG 2.x. / WCAG 2.x relative luminance. */
+/** Luminancia relativa según WCAG 2.x. */
 function relLuminance([r, g, b]) {
   const c = v => v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4;
   return .2126 * c(r) + .7152 * c(g) + .0722 * c(b);

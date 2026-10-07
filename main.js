@@ -169,7 +169,7 @@ const DEFAULTS = { preset: 'classic', bgMode: 'dynamic', bgColor: '#2a2060', acc
 const sanitize = o => Object.fromEntries(Object.entries(RULES).filter(([k, ok]) => ok(o?.[k])).map(([k]) => [k, o[k]]));
 const cfgFile = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...DEFAULTS }, saveTimer;
-try { settings = { ...DEFAULTS, ...sanitize(JSON.parse(fs.readFileSync(cfgFile(), 'utf8'))) }; } catch { /* primer inicio / first run */ }
+try { settings = { ...DEFAULTS, ...sanitize(JSON.parse(fs.readFileSync(cfgFile(), 'utf8'))) }; } catch { /* primer inicio */ }
 BASE.height = settings.layoutH;
 // Escritura diferida: un selector de color emite decenas de cambios por segundo.
 const persist = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => fs.writeFile(cfgFile(), JSON.stringify(settings), e => e && console.error('Ajustes:', e.message)), 300); };
@@ -253,7 +253,7 @@ ipcMain.handle('secret:unlock', async (e, code) => {
   if (!str(code, 200) || code.trim().length < 3) return { ok: false };
   if (Date.now() < lockUntil) return { ok: false, wait: true };
   let found = null, files = [];
-  try { files = fs.readdirSync(path.join(__dirname, 'secretos')).filter(f => f.endsWith('.bin')); } catch { /* sin paquetes / no packs */ }
+  try { files = fs.readdirSync(path.join(__dirname, 'secretos')).filter(f => f.endsWith('.bin')); } catch { /* sin paquetes */ }
   for (const f of files) {
     try { found = cleanPack(await secretos.open(fs.readFileSync(path.join(__dirname, 'secretos', f)), code)); } catch { found = null; }
     if (found) break;

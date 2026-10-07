@@ -43,7 +43,11 @@ Listo. La próxima vez que abras la app entra sola, sin pedirte nada.
 
 
 CÓMO ELEGIR MÚSICA
-- Botón de la lupa: tus playlists y un buscador.
+- Botón de la lupa: abre la biblioteca, con cinco pestañas:
+    Buscar (tus playlists y un buscador), Me gusta, Top (lo que más escuchás),
+    Cola e Historial. Con el botón "+" de cada canción la agregás a la cola.
+- Botón de la pantalla: elegís en qué dispositivo suena la música.
+- Botón de los ajustes: temas, tipografía, estilo de botones y qué se muestra.
 - También podés copiar un link de Spotify (Compartir > Copiar enlace) y pegarlo
   con Ctrl+V en la ventana del reproductor.
 
