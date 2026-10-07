@@ -1,0 +1,15 @@
+/* Aviso de canción nueva: tarjeta chica con los colores del reproductor (variables --bg y --fg que envía toast.js). */
+@font-face{font-family:Inter;src:url(/inter.woff2) format("woff2");font-weight:100 900}
+*{box-sizing:border-box;margin:0}
+[hidden]{display:none!important}
+html,body{height:100%;overflow:hidden;background:transparent;font:13px/1.3 Inter,"Segoe UI",sans-serif;user-select:none}
+/* El margen de 8 px deja lugar a la sombra dentro de la ventana transparente. */
+#t{position:absolute;inset:8px;display:flex;align-items:center;gap:12px;padding:10px 14px 10px 10px;border-radius:16px;background:var(--bg,#2a2060);color:var(--fg,#fff);box-shadow:0 6px 18px rgba(0,0,0,.45);opacity:0;transform:translateY(10px);transition:opacity .25s,transform .25s}
+body.in #t{opacity:1;transform:none}
+body.out #t{opacity:0;transform:translateY(6px);transition-duration:.5s}
+#c{width:52px;height:52px;flex:none;border-radius:10px;background:rgba(0,0,0,.25) center/cover}
+#x{min-width:0}
+#x b,#x span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#x b{font-size:14px;font-weight:650}
+#x span{font-size:12px;opacity:.75;margin-top:2px}
+@media (prefers-reduced-motion:reduce){#t{transition:none}}

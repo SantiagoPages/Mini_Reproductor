@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('bridge', {
   secretList: () => ipcRenderer.invoke('secret:list'),
   secretUnlock: c => ipcRenderer.invoke('secret:unlock', c),
   onSecrets: cb => ipcRenderer.on('secrets', (_, p) => cb(p)),
+  // Aviso de canción nueva: la interfaz envía los datos y el proceso principal decide si lo muestra.
+  announce: d => ipcRenderer.send('announce', d),
   // Alto de diseño informado por la interfaz y arrastre manual de la ventana.
   setLayoutHeight: h => ipcRenderer.send('layout-height', h),
   dragStart: () => ipcRenderer.send('drag-start'),

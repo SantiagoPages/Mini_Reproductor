@@ -20,6 +20,10 @@ files:
   - settings.html
   - settings.js
   - settings.css
+  - preload-toast.js
+  - toast.html
+  - toast.js
+  - toast.css
   - secretos.js
   - secretos/**
   - icon.png

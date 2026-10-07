@@ -5,7 +5,7 @@ const $ = id => document.getElementById(id);
 const SHOWS = [['showCover', 'La portada'], ['showArtist', 'El artista'], ['showLike', 'Me gusta (+)'], ['showShuffle', 'Aleatorio'], ['showRepeat', 'Repetir'], ['showTime', 'Barra de tiempo y tiempos'], ['showVolume', 'Volumen']];
 const SHAPES = [['rounded', 'Redondeada'], ['square', 'Cuadrada'], ['circle', 'Círculo']];
 SHOWS.push(['showDevices', 'Elegir dispositivo']);
-const MISC = [['updateCheck', 'Avisar si hay una versión nueva (consulta GitHub al iniciar)']];
+const MISC = [['updateCheck', 'Avisar si hay una versión nueva (consulta GitHub al iniciar)'], ['trackNotice', 'Avisar cuando cambia la canción (solo con la ventana en segundo plano)']];
 for (const [k, label, box = 'shows'] of [...SHOWS, ...MISC.map(m => [...m, 'misc'])]) {
   const l = document.createElement('label'), i = document.createElement('input'); i.type = 'checkbox'; i.dataset.k = k;
   i.onchange = () => bridge.setSettings({ [k]: i.checked });   // independiente del tema

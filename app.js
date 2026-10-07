@@ -25,7 +25,9 @@ const ICON = { play: '<path d="M8 5v14l11-7z"/>', pause: '<path d="M6 5h4v14H6zM
   plus: '<path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/>', minus: '<path d="M5 11h14v2H5z"/>',
   repeat: '<path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>',
   repeat1: '<path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z"/>',
-  prev: '<path d="M6 6h2v12H6zM9.5 12 18 6v12z"/>', next: '<path d="M16 6h2v12h-2zM6 18V6l8.5 6z"/>', check: '<path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/>' };
+  prev: '<path d="M6 6h2v12H6zM9.5 12 18 6v12z"/>', next: '<path d="M16 6h2v12h-2zM6 18V6l8.5 6z"/>', check: '<path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/>',
+  vol: '<path d="M3 9v6h4l5 5V4L7 9zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/>',
+  mute: '<path d="M3 9v6h4l5 5V4L7 9zm12.3.3 1.4-1.4 2.3 2.3 2.3-2.3 1.4 1.4-2.3 2.3 2.3 2.3-1.4 1.4-2.3-2.3-2.3 2.3-1.4-1.4 2.3-2.3z"/>' };
 // Estado de módulo: credenciales en memoria (S), parámetros del login en curso y estado del reproductor.
 let S = { cid: '', rt: '', at: '', exp: 0 }, ver, state, player, dev, st, t0 = 0, lastCover = '';
 
@@ -104,13 +106,24 @@ async function render() {
   bridge.nowPlaying?.(t.name, $('artist').textContent);
   for (const p of document.querySelectorAll('.pp svg')) p.innerHTML = st.paused ? ICON.play : ICON.pause;   // botón central (normal y rueda)
   $('dur').textContent = fmt(st.duration);
-  if (t.uri !== curUri) { curUri = t.uri; syncLike(t.uri); if (tab === 'queue' && !$('library').hidden) loadQueue(); }   // la cola cambia con cada pista
+  let changed = false;   // true si cambió la pista (la primera al abrir la app no cuenta): sirve para el aviso
+  if (t.uri !== curUri) { changed = !!curUri; curUri = t.uri; syncLike(t.uri); if (tab === 'queue' && !$('library').hidden) loadQueue(); }   // la cola cambia con cada pista
   const url = t.album.images.reduce((a, b) => (b.height || 0) > (a.height || 0) ? b : a, t.album.images[0] || {}).url;
+  let cover = coverData;   // portada vigente (la anterior mientras no haya otra)
   if (url && url !== lastCover) {
-    lastCover = url; const data = await bridge.cover(url); if (!data || url !== lastCover) return;   // descarta respuestas obsoletas
-    coverData = data; $('cover').style.backgroundImage = `url(${data})`;
-    const img = new Image(); img.onload = () => { if (url === lastCover) tint(img); }; img.src = data;
+    lastCover = url; const data = await bridge.cover(url); if (url !== lastCover) return;   // descarta respuestas obsoletas
+    if (data) {
+      coverData = cover = data; $('cover').style.backgroundImage = `url(${data})`;
+      const img = new Image(); img.onload = () => { if (url === lastCover) tint(img); }; img.src = data;
+    } else cover = '';
   }
+  if (changed) announce(t, url ? cover : '');
+}
+/** Envía los datos de la pista nueva a la ventanita de aviso, si la opción está activa y esta ventana no tiene el foco. */
+function announce(t, cover) {
+  if (!cfg.trackNotice || document.hasFocus()) return;
+  const cs = getComputedStyle(document.documentElement), m = cs.getPropertyValue('--bg').match(/#[0-9a-f]{6}|hsl\(\d+ \d+% \d+%\)/i);   // color sólido del fondo actual
+  bridge.announce?.({ title: t.name, artist: t.artists.map(a => a.name).join(', '), cover, bg: m ? m[0] : '#2a2060', fg: cs.getPropertyValue('--fg').trim() });
 }
 // Progreso: el SDK emite estado solo ante eventos, por lo que la posición se interpola localmente cada 200 ms.
 let dragging = false;
@@ -339,7 +352,14 @@ async function togglePlayback() {
   if (!r.ok) status('No se pudo iniciar la reproducción (' + r.status + ')');
 }
 $('play').onclick = togglePlayback;
-$('prev').onclick = () => player?.previousTrack();
+// Anterior: si la pista ya lleva más de 4 s, se reinicia en vez de volver a la anterior (como en la app de Spotify).
+const RESTART_MS = 4000;
+function goPrev() {
+  if (!player) return;
+  const pos = st ? (st.paused ? st.position : st.position + performance.now() - t0) : 0;
+  if (pos > RESTART_MS) { player.seek(0); st.position = 0; t0 = performance.now(); } else player.previousTrack();
+}
+$('prev').onclick = goPrev;
 $('next').onclick = () => player?.nextTrack();
 // Barra de progreso: arrastre con captura de puntero; el seek se ejecuta al soltar para no generar saltos de audio.
 const ratio = e => { const r = $('track').getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
@@ -363,7 +383,7 @@ $('pin').onclick = async () => $('pin').classList.toggle('on', await bridge.togg
 $('close').onclick = () => bridge.close();
 $('cfg').onclick = () => bridge.openSettings();
 bridge.onPinned?.(v => $('pin').classList.toggle('on', v));
-bridge.onMedia?.(cmd => { if (!player) return; if (cmd === 'toggle') togglePlayback(); else if (cmd === 'next') player.nextTrack(); else if (cmd === 'prev') player.previousTrack(); });
+bridge.onMedia?.(cmd => { if (!player) return; if (cmd === 'toggle') togglePlayback(); else if (cmd === 'next') player.nextTrack(); else if (cmd === 'prev') goPrev(); });
 // Atajo: al pegar (Ctrl+V) un enlace de Spotify se inicia su reproducción.
 document.addEventListener('paste', async e => {
   if (e.target.tagName === 'INPUT' || !dev) return;
@@ -433,12 +453,30 @@ $('rep').onclick = async () => {
 const savedVol = () => { const v = parseFloat(localStorage.getItem('vol')); return Number.isFinite(v) ? v : .6; };
 $('vol').value = savedVol() * 100;
 let volTouched = 0;
+// Último volumen mayor que cero (0..1): es el que se recupera al quitar el silencio. Se guarda para el próximo inicio.
+let lastVol = .5;
+try { const v = parseFloat(localStorage.getItem('volLast')); if (v > 0) lastVol = v; } catch {}
+const keepVol = v => { if (v > 0) { lastVol = v; try { localStorage.setItem('volLast', v); } catch {} } };
+// Ícono del botón de silencio: parlante tachado cuando el volumen es 0.
+function paintVol(p) {
+  $('mute').firstElementChild.innerHTML = p === 0 ? ICON.mute : ICON.vol;
+  $('mute').title = $('mute').ariaLabel = p === 0 ? 'Activar sonido' : 'Silenciar';
+}
+paintVol(+$('vol').value);
 /** Aplica un volumen 0..100 (control superior, rueda del ratón o modo VOL de la rueda). */
 function applyVolume(p) {
-  p = Math.min(100, Math.max(0, Math.round(p))); $('vol').value = p; volTouched = Date.now(); volLabel();
+  p = Math.min(100, Math.max(0, Math.round(p))); $('vol').value = p; volTouched = Date.now(); volLabel(); paintVol(p);
   player?.setVolume(p / 100); try { localStorage.setItem('vol', p / 100); } catch {}
 }
 $('vol').oninput = () => applyVolume(+$('vol').value);
+// Al soltar el deslizador se recuerda el volumen elegido (un 0 no cuenta: así se puede volver al valor anterior).
+$('vol').onchange = () => keepVol(+$('vol').value / 100);
+// Silencio: con volumen > 0 lo recuerda y silencia; con volumen 0 recupera el recordado.
+function toggleMute() {
+  const v = +$('vol').value;
+  if (v > 0) { keepVol(v / 100); applyVolume(0); } else applyVolume(lastVol * 100);
+}
+$('mute').onclick = toggleMute;
 // Sondeo de volumen: sincroniza cambios remotos (Spotify Connect) solo si este dispositivo es el activo
 // y la ventana está visible.
 setInterval(async () => {
@@ -447,7 +485,7 @@ setInterval(async () => {
     const r = await sp('/me/player'); if (r.status !== 200) return;
     const d = (await r.json()).device;
     if (d?.id !== dev || d.volume_percent == null || Math.abs(d.volume_percent - $('vol').value) < 2) return;
-    $('vol').value = d.volume_percent; volLabel(); try { localStorage.setItem('vol', d.volume_percent / 100); } catch {}
+    $('vol').value = d.volume_percent; volLabel(); paintVol(d.volume_percent); keepVol(d.volume_percent / 100); try { localStorage.setItem('vol', d.volume_percent / 100); } catch {}
   } catch {}
 }, 3000);
 
@@ -470,9 +508,31 @@ const nudge = d => { applyVolume(+$('vol').value + d); if (volMode) setVolMode(t
 $('wPlay').onclick = togglePlayback;
 $('wMenu').onclick = () => bridge.openSettings();
 $('wVol').onclick = () => setVolMode(!volMode);
-$('wPrev').onclick = () => volMode ? nudge(-5) : player?.previousTrack();
+$('wPrev').onclick = () => volMode ? nudge(-5) : goPrev();
 $('wNext').onclick = () => volMode ? nudge(5) : player?.nextTrack();
 $('wheel').addEventListener('wheel', e => { e.preventDefault(); nudge(e.deltaY < 0 ? 5 : -5); }, { passive: false });
+
+// ---------- Atajos de teclado ----------
+// Valen con la ventana del reproductor activa. Se ignoran al escribir en un campo de texto (búsqueda o Client ID);
+// sobre el deslizador de volumen, las flechas las maneja el propio control. Con la biblioteca o la lista de
+// dispositivos abiertas, ↑ ↓ quedan para recorrer la lista.
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || $('player').hidden) return;
+  const el = e.target, isInput = el.tagName === 'INPUT', onRange = isInput && el.type === 'range';
+  if (isInput && !onRange) return;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, listOpen = !$('library').hidden || !$('devs').hidden;
+  let used = true;
+  if (k === ' ') { if (!e.repeat) togglePlayback(); }
+  else if (k === 'ArrowLeft' && !onRange) goPrev();
+  else if (k === 'ArrowRight' && !onRange) player?.nextTrack();
+  else if ((k === 'ArrowUp' || k === 'ArrowDown') && !onRange && !listOpen) nudge(k === 'ArrowUp' ? 5 : -5);
+  else if (k === 'm') { if (!e.repeat) toggleMute(); }
+  else if (k === 'l') { if (!e.repeat && $('like').offsetParent) $('like').click(); }   // sin efecto si el botón está oculto
+  else used = false;
+  if (used) e.preventDefault();
+});
+// Un botón con el foco se activa al soltar la barra espaciadora: se bloquea para que la acción no se repita.
+document.addEventListener('keyup', e => { if (e.key === ' ' && e.target.tagName === 'BUTTON') e.preventDefault(); });
 
 // ---------- Biblioteca y buscador ----------
 /** Reproduce un contexto (playlist, álbum, artista o pista) en este dispositivo. Devuelve true si Spotify aceptó la orden. */

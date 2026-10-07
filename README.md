@@ -7,11 +7,13 @@ audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
 
 - Portada, título, artista y barra de progreso con salto por clic o arrastre.
 - Fondo que toma el color dominante de la portada de cada canción.
-- Anterior, play/pausa, siguiente, aleatorio, repetir, volumen y botón de Me gusta.
+- Anterior, play/pausa, siguiente, aleatorio, repetir, volumen (con botón de silencio) y botón de Me gusta.
 - Biblioteca (tus playlists) y buscador de canciones, álbumes, artistas y playlists.
 - Pestañas de **Me gusta**, **Top** (tus canciones más escuchadas), **Cola** e **Historial**.
 - Botón **+** en los resultados para agregar canciones a la cola.
 - Selector de **dispositivo** de reproducción.
+- Atajos de teclado: Espacio (pausa), ← → (anterior/siguiente), ↑ ↓ (volumen), M (silencio) y L (Me gusta).
+- Aviso opcional al cambiar de canción, en una ventanita abajo a la derecha, cuando el reproductor está en segundo plano.
 - Personalización: temas, tamaño y forma de la ventana, 5 tipografías, 5 estilos de botones
   (incluida una rueda estilo iPod), forma de la portada y alto automático.
 - Se puede ocultar cualquier elemento (portada, artista, Me gusta, aleatorio, repetir, tiempo, volumen, dispositivos).

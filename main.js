@@ -23,6 +23,9 @@ const FILES = {
   '/settings.html': ['settings.html', 'text/html; charset=utf-8'],
   '/settings.js': ['settings.js', 'text/javascript; charset=utf-8'],
   '/settings.css': ['settings.css', 'text/css; charset=utf-8'],
+  '/toast.html': ['toast.html', 'text/html; charset=utf-8'],
+  '/toast.js': ['toast.js', 'text/javascript; charset=utf-8'],
+  '/toast.css': ['toast.css', 'text/css; charset=utf-8'],
   '/inter.woff2': [path.join('node_modules', '@fontsource-variable', 'inter', 'files', 'inter-latin-wght-normal.woff2'), 'font/woff2'],
   // Tipografías opcionales (licencia OFL). Se cargan solo si el usuario las elige.
   '/nunito.woff2': [path.join('node_modules', '@fontsource-variable', 'nunito', 'files', 'nunito-latin-wght-normal.woff2'), 'font/woff2'],
@@ -157,14 +160,14 @@ const RULES = {
   radius: num(0, 40),
   bgOpacity: num(.25, 1),
   // Etapa 2: qué se muestra, tipografía, estilo de botones y forma de la portada.
-  showCover: bool, showArtist: bool, showLike: bool, showShuffle: bool, showRepeat: bool, showDevices: bool, updateCheck: bool, sfx: bool, showTime: bool, showVolume: bool,
+  showCover: bool, showArtist: bool, showLike: bool, showShuffle: bool, showRepeat: bool, showDevices: bool, updateCheck: bool, sfx: bool, showTime: bool, showVolume: bool, trackNotice: bool,
   font: oneOf(['inter', 'nunito', 'mono', 'outfit', 'dyslexic']),
   btnStyle: oneOf(['raised', 'flat', 'outline', 'icon', 'wheel']),
   coverShape: oneOf(['rounded', 'square', 'circle']),
   layoutH: num(120, 800)   // último alto de diseño informado por la interfaz (evita parpadeo al iniciar)
 };
 const DEFAULTS = { preset: 'classic', bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff', blossoms: false, scale: 1, radius: 28, bgOpacity: 1,
-  showCover: true, showArtist: true, showLike: true, showShuffle: true, showRepeat: true, showDevices: true, updateCheck: true, sfx: true, showTime: true, showVolume: true,
+  showCover: true, showArtist: true, showLike: true, showShuffle: true, showRepeat: true, showDevices: true, updateCheck: true, sfx: true, showTime: true, showVolume: true, trackNotice: false,
   font: 'inter', btnStyle: 'raised', coverShape: 'rounded', layoutH: 484 };
 const sanitize = o => Object.fromEntries(Object.entries(RULES).filter(([k, ok]) => ok(o?.[k])).map(([k]) => [k, o[k]]));
 const cfgFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -176,10 +179,13 @@ const persist = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => fs
 
 function applySettings(next) {
   const resized = next.scale !== settings.scale;
+  const noticeOn = next.trackNotice && !settings.trackNotice;   // la opción del aviso se acaba de activar
   settings = next;
   persist();
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings', settings);   // vista previa en vivo
   if (resized) applyScale();
+  // Vista previa: al activar el aviso se muestra uno de ejemplo, sin depender del foco, para comprobar que funciona.
+  if (noticeOn) showToast({ title: 'Aviso de canción nueva', artist: 'Así se verá, abajo a la derecha', cover: '', bg: '#2a2060', fg: '#fff' });
   return settings;
 }
 
@@ -263,6 +269,42 @@ ipcMain.handle('secret:unlock', async (e, code) => {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('secrets', packs);
   return { ok: true, label: found.label };
 });
+// ---------- Aviso de canción nueva ----------
+// Ventanita abajo a la derecha (sin foco ni clics) que se muestra solo si la opción está activa y ninguna ventana de
+// la app está en primer plano. La interfaz envía los datos; aquí se validan antes de reenviarlos a la ventanita.
+const TOAST = { width: 290, height: 92, ms: 4500 };
+let toastWin, toastReady = false, toastPending = null, toastTimer;
+const colorOk = v => typeof v === 'string' && (/^#[0-9a-f]{6}$/i.test(v) || /^hsl\(\d{1,3} \d{1,3}% \d{1,3}%\)$/.test(v));
+function pushToast(d) {
+  const area = screen.getDisplayMatching(win.getBounds()).workArea;   // el monitor donde está el reproductor
+  toastWin.setBounds({ x: area.x + area.width - TOAST.width - 12, y: area.y + area.height - TOAST.height - 12, width: TOAST.width, height: TOAST.height });
+  toastWin.webContents.send('toast', d);
+  toastWin.showInactive();   // se muestra sin quitarle el foco a lo que el usuario esté haciendo
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { if (toastWin && !toastWin.isDestroyed()) toastWin.hide(); }, TOAST.ms);
+}
+function showToast(d) {
+  if (!toastWin || toastWin.isDestroyed()) {
+    toastReady = false;
+    toastWin = new BrowserWindow({ width: TOAST.width, height: TOAST.height, show: false, frame: false, transparent: true, resizable: false, focusable: false,
+      skipTaskbar: true, hasShadow: false, backgroundColor: '#00000000',
+      webPreferences: { preload: path.join(__dirname, 'preload-toast.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
+    toastWin.setIgnoreMouseEvents(true);   // los clics lo atraviesan: nunca estorba
+    toastWin.setAlwaysOnTop(true, 'screen-saver');
+    toastWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    toastWin.webContents.on('will-navigate', e => e.preventDefault());
+    toastWin.webContents.on('preload-error', (e, p, err) => console.error('Aviso: error al cargar el preload:', err.message));
+    toastWin.webContents.on('did-fail-load', (e, code, desc) => console.error('Aviso: no se pudo cargar la ventanita:', desc));
+    toastWin.webContents.once('did-finish-load', () => { toastReady = true; if (toastPending) { pushToast(toastPending); toastPending = null; } });
+    toastWin.loadURL(ORIGIN + '/toast.html');
+  }
+  if (toastReady) pushToast(d); else toastPending = d;
+}
+ipcMain.on('announce', (e, d) => {
+  if (e.sender !== win?.webContents || !settings.trackNotice || BrowserWindow.getFocusedWindow()) return;
+  const cover = str(d?.cover, 600000) && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(d.cover) ? d.cover : '';
+  showToast({ title: str(d?.title, 200) ? d.title : '', artist: str(d?.artist, 200) ? d.artist : '', cover,
+    bg: colorOk(d?.bg) ? d.bg : '#2a2060', fg: ['#fff', '#16181d'].includes(d?.fg) ? d.fg : '#fff' });
+});
 ipcMain.handle('settings:get', () => settings);
 ipcMain.handle('settings:set', (e, partial) => applySettings({ ...settings, ...sanitize(partial) }));
 ipcMain.handle('settings:reset', () => applySettings({ ...DEFAULTS, layoutH: settings.layoutH }));
@@ -315,6 +357,6 @@ app.whenReady().then(async () => {
   try { setupTray(); } catch (e) { console.error('Bandeja:', e.message); }
   try { registerMediaKeys(); } catch (e) { console.error('Teclas multimedia:', e.message); }
 });
-// Red de seguridad: al salir se destruye la ventana de ajustes aunque siga abierta.
-app.on('before-quit', () => { if (settingsWin && !settingsWin.isDestroyed()) settingsWin.destroy(); });
+// Red de seguridad: al salir se destruyen la ventana de ajustes y la del aviso aunque sigan abiertas.
+app.on('before-quit', () => { for (const w of [settingsWin, toastWin]) if (w && !w.isDestroyed()) w.destroy(); });
 app.on('window-all-closed', () => app.quit());

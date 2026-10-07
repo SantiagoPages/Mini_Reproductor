@@ -78,6 +78,8 @@ svg{width:22px;height:22px;fill:currentColor}.lg svg{width:30px;height:30px}.min
 /* Control de volumen. */
 #volbox{display:flex;align-items:center;gap:6px;margin-right:auto;flex:1;min-width:0}
 #volbox svg{width:15px;height:15px;opacity:.8}
+#mute{flex:none;display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;border-radius:6px;background:none;color:inherit;cursor:pointer}
+#mute:hover svg{opacity:1}
 #vol{-webkit-appearance:none;appearance:none;flex:1;min-width:24px;width:auto;height:16px;padding:0;background:transparent;cursor:pointer}
 #vol::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--line)}
 #vol::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-4px;border-radius:50%;background:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.4)}
