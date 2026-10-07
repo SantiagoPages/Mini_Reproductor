@@ -8,8 +8,13 @@ dist/
 *.bin
 *.sig
 
+# Fuentes de temas secretos sin cifrar: nunca deben versionarse
+secretos-src/
+
 # Registros y archivos del sistema
 *.log
 Thumbs.db
 desktop.ini
 .vscode/
+
+

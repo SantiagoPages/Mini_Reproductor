@@ -2,6 +2,7 @@
 <link rel="stylesheet" href="/style.css"></head><body>
 <!-- Asistente de configuración: creación de la app en Spotify e ingreso del Client ID -->
 <main class="card" id="setup" hidden>
+ <div class="bgfill"></div>
  <h1>Configurar Spotify</h1>
  <p class="lead">Se hace una sola vez (unos 3 minutos). Necesitás Spotify Premium.</p>
  <ol id="steps">
@@ -15,6 +16,7 @@
 </main>
 <!-- Reproductor -->
 <main class="card" id="player" hidden>
+ <div class="bgfill"></div>
  <div id="bgimg" hidden></div>
  <div id="bloom" hidden aria-hidden="true">
   <svg id="branch" viewBox="0 0 280 484" width="280" height="484">
@@ -29,14 +31,20 @@
   </svg>
   <div id="petals"></div>
  </div>
+ <!-- Decoración de temas secretos (se construye desde datos validados; ver applyPack en app.js) -->
+ <div id="secret" hidden aria-hidden="true"></div>
  <div id="top">
   <label id="volbox"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg><input id="vol" type="range" min="0" max="100" aria-label="Volumen"></label>
-  <button class="btn mini" id="shuf" title="Aleatorio"><svg viewBox="0 0 24 24"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button>
+  <button class="btn mini" id="dev" title="Elegir dispositivo"><svg viewBox="0 0 24 24"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg></button>
   <button class="btn mini" id="cfg" title="Ajustes de apariencia"><svg viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg></button>
   <button class="btn mini" id="libbtn" title="Biblioteca y buscador (Esc para volver)"><svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg></button>
   <button class="btn mini" id="pin" title="Siempre encima"><svg viewBox="0 0 24 24"><path d="M14 4v5l2 3v2h-4v6l-1 1-1-1v-6H6v-2l2-3V4z"/></svg></button>
   <button class="btn mini" id="close" title="Cerrar"><svg viewBox="0 0 24 24"><path d="m6 7.4 1.4-1.4 4.6 4.6L16.6 6 18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6z"/></svg></button>
  </div>
+ <!-- Aviso de versión nueva -->
+ <div id="upd" hidden><span id="updt"></span><button type="button" id="updgo">Ver</button><button type="button" id="updx" aria-label="Cerrar aviso">×</button></div>
+ <!-- Lista de dispositivos de Spotify Connect -->
+ <ul id="devs" hidden></ul>
  <section id="now">
  <div id="cover"></div>
  <div id="info"><div id="txt"><div id="title">Nada sonando</div><div id="artist">Pegá un link de Spotify (Ctrl+V)</div></div>
@@ -44,15 +52,27 @@
  </section>
  <!-- Biblioteca y búsqueda (alterna con #now) -->
  <section id="library" hidden>
+  <div id="tabs"><button type="button" data-t="search" class="on">Buscar</button><button type="button" data-t="liked">Me gusta</button><button type="button" data-t="top">Top</button><button type="button" data-t="queue">Cola</button><button type="button" data-t="history">Historial</button></div>
+  <div id="ranges" hidden><button type="button" data-r="short_term">4 semanas</button><button type="button" data-r="medium_term" class="on">6 meses</button><button type="button" data-r="long_term">Siempre</button></div>
   <input id="q" placeholder="Buscar o pegar un link" autocomplete="off" spellcheck="false">
   <ul id="list"></ul>
  </section>
  <div id="time"><span id="cur">0:00</span><div id="bar"><div id="track"><div id="fill"></div><div id="knob"></div></div></div><span id="dur">0:00</span></div>
  <!-- Controles de transporte -->
  <div id="ctl">
+  <button class="btn mini" id="shuf" title="Aleatorio"><svg viewBox="0 0 24 24"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button>
   <button class="btn sm" id="prev" title="Anterior"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zM9.5 12 18 6v12z"/></svg></button>
-  <button class="btn lg" id="play" title="Pausa / Reanudar"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+  <button class="btn lg pp" id="play" title="Pausa / Reanudar"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
   <button class="btn sm" id="next" title="Siguiente"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18V6l8.5 6z"/></svg></button>
+  <button class="btn mini" id="rep" title="Repetir: apagado"><svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg></button>
+ </div>
+ <!-- Rueda estilo reproductor MP4 (estilo de botones "wheel"): MENU arriba, anterior/siguiente a los lados, VOL abajo -->
+ <div id="wheel">
+  <button class="wk t" id="wMenu" title="Ajustes">MENU</button>
+  <button class="wk l" id="wPrev" title="Anterior"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zM9.5 12 18 6v12z"/></svg></button>
+  <button class="wk r" id="wNext" title="Siguiente"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18V6l8.5 6z"/></svg></button>
+  <button class="wk b" id="wVol" title="Volumen (también con la rueda del ratón)">VOL</button>
+  <button class="btn wc pp" id="wPlay" title="Pausa / Reanudar"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
  </div>
  <p id="status" class="note"></p>
 </main>

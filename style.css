@@ -1,16 +1,28 @@
 /* Mini Player — estilos. La variable --bg se recalcula por pista (ver tint() en app.js). */
 @font-face{font-family:Inter;src:url(/inter.woff2) format("woff2");font-weight:100 900}
-:root{--bg:#2a2060;--fg:#fff;--btn:rgba(0,0,0,.28);--line:rgba(255,255,255,.22);--shade:linear-gradient(160deg,rgba(255,255,255,.1),rgba(0,0,0,.35));--accent:#fff;--accent-fg:#16181d}
+/* Tipografías opcionales (OFL). Solo se descargan si se usan. */
+@font-face{font-family:Nunito;src:url(/nunito.woff2) format("woff2");font-weight:200 1000;font-display:swap}
+@font-face{font-family:Outfit;src:url(/outfit.woff2) format("woff2");font-weight:100 900;font-display:swap}
+@font-face{font-family:Atkinson;src:url(/atkinson-400.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:Atkinson;src:url(/atkinson-700.woff2) format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:ShareTechMono;src:url(/mono.woff2) format("woff2");font-weight:400;font-display:swap}
+:root{--ff:Inter,"Segoe UI",sans-serif;--bg:#2a2060;--fg:#fff;--btn:rgba(0,0,0,.28);--line:rgba(255,255,255,.22);--shade:linear-gradient(160deg,rgba(255,255,255,.1),rgba(0,0,0,.35));--accent:#fff;--accent-fg:#16181d}
 *{box-sizing:border-box;margin:0}
 [hidden]{display:none!important}
 /* Texto no seleccionable, salvo campos de entrada y fragmentos copiables. */
-html,body{height:100%;overflow:hidden;background:transparent;font:14px Inter,"Segoe UI",sans-serif;color:var(--fg);user-select:none}
+html,body{height:100%;overflow:hidden;background:transparent;font:14px/1.3 var(--ff);color:var(--fg);user-select:none}
+[data-font=nunito]{--ff:Nunito,"Segoe UI",sans-serif}
+[data-font=outfit]{--ff:Outfit,"Segoe UI",sans-serif}
+[data-font=dyslexic]{--ff:Atkinson,"Segoe UI",sans-serif}
+[data-font=mono]{--ff:ShareTechMono,Consolas,monospace}
 /* Contenedor principal: ventana transparente con esquinas redondeadas y fondo teñido. */
-.card{position:relative;height:100%;border-radius:28px;padding:20px;display:flex;flex-direction:column;background:var(--bg);transition:background-color .7s;overflow:hidden}
-.card::before{content:"";position:absolute;inset:0;background:var(--shade);pointer-events:none}
+.card{position:relative;width:280px;transform:scale(var(--z,1));transform-origin:0 0;border-radius:var(--radius,28px);padding:20px 20px var(--padb,20px);display:flex;flex-direction:column;overflow:hidden}
 .card>*{position:relative}
+/* Capa de fondo: solo ella se vuelve translúcida (--bgo); el contenido queda opaco. */
+.card>.bgfill{position:absolute;inset:0;background:var(--bg);opacity:var(--bgo,1);transition:background-color .7s;pointer-events:none}
+.bgfill::after{content:"";position:absolute;inset:0;background:var(--shade)}
 /* Asistente de configuración. */
-#setup{justify-content:flex-start;gap:8px;overflow-y:auto;scrollbar-width:thin}
+#setup{height:484px;justify-content:flex-start;gap:8px;overflow-y:auto;scrollbar-width:thin}
 .lead{font-size:12px;opacity:.75}
 #steps{padding-left:18px;font-size:12px;line-height:1.45;display:flex;flex-direction:column;gap:10px}
 #steps code{background:rgba(0,0,0,.3);padding:1px 5px;border-radius:4px;font-size:11px;user-select:text}
@@ -32,7 +44,7 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--fg);outline-off
 #fill{height:100%;width:0;background:var(--accent);border-radius:3px}
 #knob{position:absolute;top:50%;left:0;width:14px;height:14px;border-radius:50%;background:var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.4);transform:translate(-50%,-50%) scale(0);transition:transform .12s}
 #bar:hover #knob,#bar.drag #knob{transform:translate(-50%,-50%) scale(1)}
-#ctl{margin-top:auto;display:flex;justify-content:center;align-items:center;gap:22px}
+#ctl{margin-top:16px;display:flex;justify-content:center;align-items:center;gap:6px}
 /* Botones: superficie oscura translúcida con relieve (luz superior, sombra inferior). */
 .btn{border:0;color:var(--fg);border-radius:50%;display:grid;place-items:center;cursor:pointer;background:var(--btn);
  box-shadow:inset 0 1px 0 rgba(255,255,255,.2),inset 0 -2px 3px rgba(0,0,0,.25),0 4px 8px rgba(0,0,0,.35);transition:transform .08s,background .15s}
@@ -40,7 +52,7 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--fg);outline-off
 .btn:active{transform:translateY(2px);box-shadow:inset 0 2px 4px rgba(0,0,0,.45)}
 .sm{width:50px;height:50px}.lg{width:68px;height:68px}.mini{width:24px;height:24px}
 svg{width:22px;height:22px;fill:currentColor}.lg svg{width:30px;height:30px}.mini svg{width:13px;height:13px}
-#top{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:-8px 0 8px;opacity:.75;transition:opacity .2s}
+#top{display:flex;align-items:center;justify-content:flex-end;gap:4px;margin:-8px 0 8px;opacity:.75;transition:opacity .2s}
 #top:hover{opacity:1}
 .btn.on,.btn.on:hover{background:color-mix(in srgb,var(--accent) 45%,transparent)}
 #info{display:flex;align-items:center;gap:10px;margin-top:16px}
@@ -49,7 +61,10 @@ svg{width:22px;height:22px;fill:currentColor}.lg svg{width:30px;height:30px}.min
 #like{width:34px;height:34px;flex:none}
 #like svg{width:18px;height:18px}
 /* Vista de biblioteca y búsqueda (alterna con #now). */
-#now,#library{flex:1;min-height:0}
+/* El alto del reproductor se ajusta al contenido; con la biblioteca abierta es fijo. */
+#player.lib{height:484px}
+[data-btn=wheel] #player.lib{height:600px}
+#library{flex:1;min-height:0}
 #library{display:flex;flex-direction:column;gap:8px}
 #q{flex:none;padding:9px 12px}
 #list{flex:1;overflow-y:auto;list-style:none;padding:0;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.3) transparent}
@@ -61,13 +76,13 @@ svg{width:22px;height:22px;fill:currentColor}.lg svg{width:30px;height:30px}.min
 .sec{font-size:11px;opacity:.6;padding:8px 8px 2px;text-transform:uppercase;letter-spacing:.06em}
 .empty{text-transform:none;letter-spacing:0;font-size:12px;padding:8px}
 /* Control de volumen. */
-#volbox{display:flex;align-items:center;gap:6px;margin-right:auto}
+#volbox{display:flex;align-items:center;gap:6px;margin-right:auto;flex:1;min-width:0}
 #volbox svg{width:15px;height:15px;opacity:.8}
-#vol{-webkit-appearance:none;appearance:none;width:52px;height:16px;padding:0;background:transparent;cursor:pointer}
+#vol{-webkit-appearance:none;appearance:none;flex:1;min-width:24px;width:auto;height:16px;padding:0;background:transparent;cursor:pointer}
 #vol::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--line)}
 #vol::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-4px;border-radius:50%;background:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.4)}
 /* Fondo de portada difuminada (modo "blur"). */
-#bgimg{position:absolute;inset:-30px;background:center/cover;filter:blur(28px) brightness(.55);pointer-events:none}
+#bgimg{position:absolute;inset:-30px;background:center/cover;filter:blur(28px) brightness(.55);opacity:var(--bgo,1);pointer-events:none}
 /* Flores de cerezo (tema Cherry): ramas fijas y pétalos cayendo, siempre detrás del contenido. */
 #bloom{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 #branch{position:absolute;inset:0}
@@ -77,3 +92,77 @@ svg{width:22px;height:22px;fill:currentColor}.lg svg{width:30px;height:30px}.min
 .paused #petals i{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){#petals{display:none}}
 #status{position:absolute;left:20px;right:20px;bottom:4px}
+
+/* ---- Qué se muestra (clases en <body>, ver applyLook en app.js) ---- */
+.no-cover #cover{display:none}
+.no-cover #info{margin-top:6px}
+.no-cover #title{font-size:19px}
+.no-artist #artist{display:none}
+.no-like #like{display:none}
+.no-shuffle #shuf{display:none}
+.no-repeat #rep{display:none}
+.no-devices #dev{display:none}
+.no-time #time{display:none}
+.no-volume #volbox{display:none}
+[data-cover=square] #cover{border-radius:0}
+[data-cover=circle] #cover{border-radius:50%}
+/* ---- Estilos de botones ---- */
+[data-btn=flat] .btn{box-shadow:none}
+[data-btn=flat] .btn:active{transform:scale(.94);box-shadow:none}
+[data-btn=outline] .btn{box-shadow:none;border:2px solid var(--line)}
+[data-btn=outline] .btn:not(.on){background:transparent}
+[data-btn=outline] .btn:not(.on):hover{background:var(--btn)}
+[data-btn=outline] .btn:active{transform:scale(.94);box-shadow:none}
+[data-btn=icon] .btn{box-shadow:none}
+[data-btn=icon] .btn:not(.on),[data-btn=icon] .btn:not(.on):hover{background:none}
+[data-btn=icon] .btn:hover{opacity:.7}
+[data-btn=icon] .btn:active{transform:scale(.92);box-shadow:none}
+/* ---- Rueda estilo MP4 ---- */
+#wheel{display:none;position:relative;flex:none;width:190px;height:190px;margin:18px auto 0;border-radius:50%;background:var(--btn);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.2),inset 0 -3px 6px rgba(0,0,0,.25),0 6px 14px rgba(0,0,0,.35)}
+[data-btn=wheel] #wheel{display:block}
+[data-btn=wheel] #ctl,[data-btn=wheel] #volbox{display:none}
+.wk{position:absolute;width:56px;height:40px;border:0;border-radius:12px;background:none;color:var(--fg);font:inherit;font-size:11px;font-weight:700;letter-spacing:.08em;cursor:pointer;display:grid;place-items:center}
+.wk:hover{background:rgba(255,255,255,.12)}
+.wk.on{color:var(--accent)}
+.wk.t{top:8px;left:67px}.wk.b{bottom:8px;left:67px}.wk.l{left:6px;top:75px;width:40px}.wk.r{right:6px;top:75px;width:40px}
+.wk svg{width:18px;height:18px}
+.wc{position:absolute;top:57px;left:57px;width:76px;height:76px}
+.wc svg{width:30px;height:30px}
+
+/* ---- Pestañas de la biblioteca y botón "+" de la cola ---- */
+#tabs{display:flex;gap:6px;flex:none}
+#tabs button{flex:1;padding:6px 4px;border:0;border-radius:999px;background:var(--btn);color:var(--fg);font:inherit;font-size:12px;cursor:pointer}
+#tabs button.on{background:color-mix(in srgb,var(--accent) 45%,transparent)}
+.it .qb{margin-left:auto;flex:none;opacity:0;transition:opacity .12s}
+.it:hover .qb,.it:focus-within .qb{opacity:1}
+.it.plain{cursor:default}.it.plain:hover{background:none}
+
+/* ---- Pestañas extra, rangos del Top, dispositivos y aviso de versión ---- */
+#tabs{overflow-x:auto;scrollbar-width:none}
+#tabs{gap:4px}
+#tabs button{flex:auto;padding:6px 5px;font-size:11px;white-space:nowrap}
+#ranges{display:flex;gap:6px;flex:none}
+#ranges button{flex:1;padding:4px;border:0;border-radius:8px;background:none;color:var(--fg);font:inherit;font-size:11px;opacity:.7;cursor:pointer;border-bottom:2px solid transparent}
+#ranges button.on{opacity:1;border-bottom-color:var(--accent)}
+#devs{position:absolute;z-index:5;top:48px;left:12px;right:12px;max-height:calc(100% - 60px);overflow-y:auto;list-style:none;padding:6px;border-radius:14px;
+ background:color-mix(in srgb,var(--bg),#000 35%);box-shadow:0 10px 28px rgba(0,0,0,.5)}
+#devs .it.cur .tx b{color:var(--accent)}
+#upd{display:flex;align-items:center;gap:8px;margin-top:8px;padding:6px 8px 6px 12px;border-radius:12px;background:color-mix(in srgb,var(--accent) 30%,transparent);font-size:12px}
+#upd span{flex:1;min-width:0}
+#upd button{border:0;border-radius:999px;padding:4px 10px;background:var(--accent);color:var(--accent-fg);font:inherit;font-size:11px;font-weight:600;cursor:pointer}
+#upd #updx{background:none;color:var(--fg);padding:2px 6px;font-size:15px}
+
+/* Aleatorio y Repetir viven en la fila de transporte; los controles se reducen para que quepan los cinco en 240 px. */
+#ctl .sm{width:46px;height:46px}#ctl .lg{width:64px;height:64px}
+#ctl .mini{width:28px;height:28px}#ctl .mini svg{width:15px;height:15px}
+
+/* ---- Temas secretos: capas de decoración detrás del contenido ---- */
+#secret{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+#secret .dec{position:absolute;left:0;width:100%}
+#secret .dec.top{top:0}#secret .dec.bottom{bottom:0}
+#secret .dec svg,#secret .fi svg{display:block;width:100%;height:auto}
+#secret .fi{position:absolute;top:0;left:var(--x);width:var(--s);opacity:.5;animation:fall var(--d) linear var(--dl) infinite}
+.paused #secret .fi{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){#secret .fi{display:none}}
+#secret .bgart{position:absolute;inset:0;background-size:cover;background-position:center}

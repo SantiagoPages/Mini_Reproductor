@@ -20,9 +20,15 @@ files:
   - settings.html
   - settings.js
   - settings.css
+  - secretos.js
+  - secretos/**
   - icon.png
   - package.json
   - node_modules/@fontsource-variable/inter/**
+  - node_modules/@fontsource-variable/nunito/**
+  - node_modules/@fontsource-variable/outfit/**
+  - node_modules/@fontsource/atkinson-hyperlegible/**
+  - node_modules/@fontsource/share-tech-mono/**
 
 win:
   icon: icon.png

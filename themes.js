@@ -1,4 +1,5 @@
-/** Temas prediseñados: cada uno es un conjunto de ajustes que se aplica con un clic. / Preset themes. */
+/** Temas prediseñados: cada uno es un conjunto de ajustes que se aplica con un clic. */
+// Cada clave es un id de tema; `swatch` es la muestra que se ve en el botón de Ajustes.
 const THEMES = {
   classic: { label: 'Clásico', bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff', swatch: 'linear-gradient(135deg,#3b2d8f,#b0508a)' },
   pure:    { label: 'Oscuro puro', bgMode: 'fixed', bgColor: '#0e0e10', accentMode: 'white', accentColor: '#ffffff', swatch: '#0e0e10' },

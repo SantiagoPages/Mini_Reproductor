@@ -7,8 +7,15 @@ audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
 
 - Portada, título, artista y barra de progreso con salto por clic o arrastre.
 - Fondo que toma el color dominante de la portada de cada canción.
-- Anterior, play/pausa, siguiente, aleatorio, volumen y botón de Me gusta.
+- Anterior, play/pausa, siguiente, aleatorio, repetir, volumen y botón de Me gusta.
 - Biblioteca (tus playlists) y buscador de canciones, álbumes, artistas y playlists.
+- Pestañas de **Me gusta**, **Top** (tus canciones más escuchadas), **Cola** e **Historial**.
+- Botón **+** en los resultados para agregar canciones a la cola.
+- Selector de **dispositivo** de reproducción.
+- Personalización: temas, tamaño y forma de la ventana, 5 tipografías, 5 estilos de botones
+  (incluida una rueda estilo iPod), forma de la portada y alto automático.
+- Se puede ocultar cualquier elemento (portada, artista, Me gusta, aleatorio, repetir, tiempo, volumen, dispositivos).
+- Aviso de nueva versión (opcional): consulta GitHub al iniciar; no instala nada, solo abre la página de la release.
 - Ícono en la bandeja, modo "siempre encima" y teclas multimedia globales.
 - Sesión persistente, guardada cifrada con el almacén de credenciales de Windows.
 
@@ -51,12 +58,16 @@ Para generar el instalador y la versión portable: `construir.bat` (resultado en
 - **Endurecimiento**: CSP restrictiva, validación del encabezado Host (anti DNS rebinding), navegación y ventanas
   nuevas bloqueadas, permisos de mínimo privilegio y construcción del DOM con `textContent`.
 - **Repositorio**: no contiene ningún Client ID ni credencial.
+- **Privacidad**: la única consulta externa propia, además de Spotify, es el aviso de versión a la API pública de
+  GitHub (sin enviar datos personales). Se desactiva en Ajustes → Actualizaciones.
+- **Ajustes**: se guardan en local (`settings.json`) y se validan contra una lista de valores permitidos.
 
 ## Limitaciones
 
 - Spotify exige Premium y que cada persona use su propia app de desarrollador (modo desarrollo: hasta 5 usuarios por app).
 - La firma de EVS puede vencer: de vez en cuando hace falta recompilar y volver a publicar el ejecutable.
 - No es un producto oficial de Spotify.
+- Las pestañas Top e Historial dependen de los datos que Spotify devuelva para tu cuenta.
 
 ## Aviso legal
 

@@ -11,10 +11,19 @@ section{margin-bottom:20px;display:flex;flex-direction:column;gap:10px}
 #themes button:hover{background:#2e2842}
 #themes button.on{border-color:#b9a8ff}
 .sw{width:100%;height:34px;border-radius:8px;border:1px solid rgba(255,255,255,.15)}
-select,button#reset{width:100%;padding:9px 10px;border:0;border-radius:8px;background:#241f33;color:inherit;font:inherit}
+select,button#reset,button#secretGo,input[type=text]{width:100%;padding:9px 10px;border:0;border-radius:8px;background:#241f33;color:inherit;font:inherit}
 label{display:flex;justify-content:space-between;align-items:center}
 input[type=color]{width:56px;height:30px;padding:0;border:0;border-radius:6px;background:none;cursor:pointer}
 input[type=checkbox]{width:20px;height:20px;accent-color:#b9a8ff;cursor:pointer}
-button#reset{cursor:pointer;margin-top:4px}
-button#reset:hover{background:#2e2842}
+#sizes{grid-template-columns:repeat(4,1fr)}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
+.seg button{padding:8px 4px;border:2px solid transparent;border-radius:10px;background:#241f33;color:inherit;font:inherit;font-size:12px;cursor:pointer}
+#sizes{grid-auto-flow:row}
+.seg button:hover{background:#2e2842}
+.seg button.on{border-color:#b9a8ff}
+.rng{display:grid;grid-template-columns:1fr auto;gap:6px 10px}
+.rng output{font-size:12px;opacity:.7}
+.rng input{grid-column:1/-1;width:100%;accent-color:#b9a8ff;cursor:pointer}
+button#reset,button#secretGo{cursor:pointer;margin-top:4px}
+button#reset:hover,button#secretGo:hover{background:#2e2842}
 select:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid #b9a8ff;outline-offset:2px}

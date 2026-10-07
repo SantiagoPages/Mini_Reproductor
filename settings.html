@@ -1,8 +1,12 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Ajustes</title>
+<!doctype html>
+<!-- Ventana de ajustes. Los botones de temas y de opciones se generan desde settings.js; los estilos, en settings.css. -->
+<html lang="es"><head><meta charset="utf-8"><title>Ajustes</title>
 <link rel="stylesheet" href="/settings.css"></head><body>
 <h1>Apariencia</h1>
 <p class="hint">Los cambios se ven al instante en el reproductor y se guardan en esta PC.</p>
+<!-- Temas prediseñados (y los secretos desbloqueados) -->
 <section><h2>Temas</h2><div id="themes"></div></section>
+<!-- Fondo: modo y color fijo -->
 <section><h2>Fondo</h2>
  <select id="bgMode" aria-label="Modo de fondo">
   <option value="dynamic">Dinámico (color de la portada)</option>
@@ -13,6 +17,42 @@
  </select>
  <label id="bgColorRow">Color del fondo <input type="color" id="bgColor"></label>
 </section>
+<!-- Tamaño de la ventana, esquinas y transparencia del fondo -->
+<section><h2>Tamaño y forma</h2>
+ <div id="sizes" class="seg">
+  <button type="button" data-s="0.8">Chico</button><button type="button" data-s="1">Normal</button>
+  <button type="button" data-s="1.25">Grande</button><button type="button" data-s="1.5">Enorme</button>
+ </div>
+ <label class="rng"><span>Tamaño</span><output id="scaleV"></output><input type="range" id="scale" min="70" max="160" step="5" aria-label="Tamaño"></label>
+ <label class="rng"><span>Esquinas</span><output id="radiusV"></output><input type="range" id="radius" min="0" max="40" step="1" aria-label="Esquinas"></label>
+ <label class="rng"><span>Transparencia del fondo</span><output id="bgOpacityV"></output><input type="range" id="bgOpacity" min="0" max="75" step="5" aria-label="Transparencia del fondo"></label>
+</section>
+<!-- Interruptores para ocultar elementos y forma de la portada (se generan en settings.js) -->
+<section><h2>Qué se muestra</h2>
+ <div id="shows"></div>
+ <div id="coverShape" class="seg"></div>
+</section>
+<!-- Tipografía: los valores coinciden con data-font en style.css -->
+<section><h2>Tipografía</h2>
+ <select id="font" aria-label="Tipografía">
+  <option value="inter">Inter (la actual)</option>
+  <option value="nunito">Redondeada (Nunito)</option>
+  <option value="outfit">Geométrica (Outfit)</option>
+  <option value="mono">Monoespaciada (LCD retro)</option>
+  <option value="dyslexic">Amigable con la dislexia (Atkinson Hyperlegible)</option>
+ </select>
+</section>
+<!-- Estilo de botones: los valores coinciden con data-btn en style.css -->
+<section><h2>Botones</h2>
+ <select id="btnStyle" aria-label="Estilo de botones">
+  <option value="raised">Relieve físico (el actual)</option>
+  <option value="flat">Planos</option>
+  <option value="outline">Contorno</option>
+  <option value="icon">Solo ícono</option>
+  <option value="wheel">Rueda estilo MP4 (MENU abre estos Ajustes)</option>
+ </select>
+</section>
+<!-- Color de acento -->
 <section><h2>Acento</h2>
  <select id="accentMode" aria-label="Color de acento">
   <option value="white">Blanco</option>
@@ -21,8 +61,19 @@
  </select>
  <label id="accentColorRow">Color de acento <input type="color" id="accentColor"></label>
 </section>
+<!-- Solo visible con el tema Cherry -->
 <section id="decor" hidden><h2>Decoración</h2>
  <label>Flores de cerezo <input type="checkbox" id="blossoms"></label>
 </section>
+<!-- Opciones varias (aviso de versión nueva) -->
+<section><h2>Actualizaciones</h2><div id="misc"></div></section>
+<!-- Solo visible cuando el tema activo trae sonidos -->
+<section id="sfxRow" hidden><h2>Sonidos</h2><label>Sonidos del tema <input type="checkbox" id="sfx"></label></section>
+<!-- Oculto por defecto: se revela con una combinación de botones de tamaño (ver settings.js) -->
+<section id="secretBox" hidden><h2>Código</h2>
+ <input id="secretCode" type="text" placeholder="…" autocomplete="off" spellcheck="false" aria-label="Código">
+ <button id="secretGo" type="button">Desbloquear</button><p id="secretMsg" class="hint"></p>
+</section>
+<!-- Vuelve a los valores de fábrica -->
 <button id="reset" type="button">Restablecer valores</button>
 <script src="/themes.js"></script><script src="/settings.js"></script></body></html>

@@ -9,13 +9,9 @@
  *
  * La interfaz corre aislada: sandbox, contextIsolation y sin acceso a Node.
  */
-/**
- * Electron main process. Hosts the loopback HTTP server (UI + OAuth redirect), the frameless window,
- * tray and media keys. Privileged operations are exposed over validated IPC only; the UI runs sandboxed,
- * with context isolation and no Node access.
- */
-const { app, BrowserWindow, components, ipcMain, safeStorage, shell, session, dialog, clipboard, Tray, Menu, nativeImage, globalShortcut } = require('electron');
+const { app, BrowserWindow, components, ipcMain, safeStorage, shell, session, dialog, clipboard, Tray, Menu, nativeImage, globalShortcut, screen } = require('electron');
 const http = require('http'), fs = require('fs'), path = require('path');
+const secretos = require('./secretos');
 // Puerto fijo: debe coincidir con la redirect URI registrada en el panel de Spotify.
 const PORT = 8888, ORIGIN = `http://127.0.0.1:${PORT}`;
 // Lista blanca de recursos servidos (ruta -> [archivo, tipo MIME]). Cualquier otra ruta responde 404.
@@ -27,21 +23,30 @@ const FILES = {
   '/settings.html': ['settings.html', 'text/html; charset=utf-8'],
   '/settings.js': ['settings.js', 'text/javascript; charset=utf-8'],
   '/settings.css': ['settings.css', 'text/css; charset=utf-8'],
-  '/inter.woff2': [path.join('node_modules', '@fontsource-variable', 'inter', 'files', 'inter-latin-wght-normal.woff2'), 'font/woff2']
+  '/inter.woff2': [path.join('node_modules', '@fontsource-variable', 'inter', 'files', 'inter-latin-wght-normal.woff2'), 'font/woff2'],
+  // Tipografías opcionales (licencia OFL). Se cargan solo si el usuario las elige.
+  '/nunito.woff2': [path.join('node_modules', '@fontsource-variable', 'nunito', 'files', 'nunito-latin-wght-normal.woff2'), 'font/woff2'],
+  '/outfit.woff2': [path.join('node_modules', '@fontsource-variable', 'outfit', 'files', 'outfit-latin-wght-normal.woff2'), 'font/woff2'],
+  '/atkinson-400.woff2': [path.join('node_modules', '@fontsource', 'atkinson-hyperlegible', 'files', 'atkinson-hyperlegible-latin-400-normal.woff2'), 'font/woff2'],
+  '/atkinson-700.woff2': [path.join('node_modules', '@fontsource', 'atkinson-hyperlegible', 'files', 'atkinson-hyperlegible-latin-700-normal.woff2'), 'font/woff2'],
+  '/mono.woff2': [path.join('node_modules', '@fontsource', 'share-tech-mono', 'files', 'share-tech-mono-latin-400-normal.woff2'), 'font/woff2']
 };
 // Content-Security-Policy de la interfaz. connect-src e img-src admiten https genérico porque
 // Spotify distribuye API, portadas y licencias DRM desde múltiples hosts; los scripts quedan
 // restringidos al propio origen y al SDK oficial.
-// CSP: scripts limited to same origin + the official SDK. Generic https in connect-src/img-src because Spotify
-// serves its API, artwork and DRM licensing from many hosts.
 const CSP = "default-src 'self'; script-src 'self' https://sdk.scdn.co; style-src 'self'; img-src 'self' data: https:; " +
   "connect-src https: wss:; frame-src https://sdk.scdn.co; media-src https: blob:; object-src 'none'; base-uri 'none'; form-action 'none'";
 // Ventana única de la aplicación.
-const WIN = { width: 280, height: 484 };   // tamaño fijo de la ventana / fixed window size
+// Tamaño base de la interfaz (px CSS). La ventana mide BASE x escala; WIN es el tamaño vigente.
+// El alto base (BASE.height) lo informa la interfaz según los elementos visibles (ver 'layout-height').
+const BASE = { width: 280, height: 484 };
+const WIN = { ...BASE };
+const sizeFor = s => ({ width: Math.round(BASE.width * s), height: Math.round(BASE.height * s) });
+// La escala nunca supera lo que entra en el área útil del monitor (sin barra de tareas).
+const fitScale = (s, area) => Math.max(.5, Math.min(s, (area.height - 16) / BASE.height, (area.width - 16) / BASE.width));
 let win;
 
 // Instancia única: el puerto fijo impide ejecutar dos copias simultáneas.
-// Single instance: the fixed port prevents two copies; a second launch focuses the existing window.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 else app.on('second-instance', () => {
@@ -51,7 +56,6 @@ else app.on('second-instance', () => {
 });
 // Se desactiva el manejo nativo de teclas multimedia de Chromium; de lo contrario cada
 // pulsación se procesaría dos veces (nativo + globalShortcut).
-// Native Chromium media-key handling is disabled; otherwise each key press would be processed twice.
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,MediaSessionService');
 
 /**
@@ -61,7 +65,6 @@ app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,Media
  */
 function serve() {
   return new Promise(ok => http.createServer((req, res) => {
-    // Mitigates DNS rebinding: only the exact loopback Host header is served.
     if (req.headers.host !== `127.0.0.1:${PORT}`) { res.writeHead(403); return res.end(); } // Mitiga DNS rebinding: solo se atiende el Host exacto de loopback.
     const u = new URL(req.url, ORIGIN);
     if (u.pathname === '/' && (u.searchParams.has('code') || u.searchParams.has('error'))) {
@@ -84,8 +87,6 @@ function serve() {
 
 // Persistencia de sesión: el refresh token se cifra con safeStorage (DPAPI en Windows) y se
 // almacena en userData, fuera del directorio del proyecto.
-// Session persistence: the refresh token is encrypted with safeStorage (DPAPI on Windows) and stored in
-// userData, outside the project tree.
 const sf = () => path.join(app.getPath('userData'), 'session.bin');
 ipcMain.handle('session:load', () => { try { return JSON.parse(safeStorage.decryptString(fs.readFileSync(sf()))); } catch { return null; } });
 ipcMain.handle('session:save', (e, s) => {
@@ -95,14 +96,11 @@ ipcMain.handle('session:save', (e, s) => {
 ipcMain.handle('session:clear', () => fs.rmSync(sf(), { force: true }));
 // Descarga de portadas en el proceso principal (solo desde el CDN de Spotify), entregadas como
 // data URL: evita restricciones CORS al leer los píxeles en canvas para el color dominante.
-// Artwork is fetched in the main process (Spotify CDN only) and returned as a data URL, avoiding CORS limits
-// when sampling pixels for the dominant color.
 ipcMain.handle('cover', async (e, url) => {
   if (typeof url !== 'string' || !url.startsWith('https://i.scdn.co/image/')) return null;
   try { const r = await fetch(url); return 'data:image/jpeg;base64,' + Buffer.from(await r.arrayBuffer()).toString('base64'); } catch { return null; }
 });
 // Abre el login en el navegador del sistema; se valida el destino para no actuar como redirector abierto.
-// Opens the OAuth login in the system browser; the destination is allow-listed to avoid acting as an open redirector.
 ipcMain.on('login', (e, url) => { if (typeof url === 'string' && url.startsWith('https://accounts.spotify.com/authorize?')) shell.openExternal(url); });
 // Estado "siempre encima": fuente única que mantiene sincronizados el botón de la interfaz y la bandeja.
 let tray, menu;
@@ -143,41 +141,138 @@ ipcMain.on('close', () => app.quit());
 // ---------- Ajustes de apariencia ----------
 // Preferencias visuales en un JSON dentro de userData (sin datos sensibles). Toda entrada se valida contra
 // una lista blanca antes de guardarse o difundirse.
-// Appearance preferences: JSON file in userData (nothing sensitive). Every input is validated against an
-// allow-list before being stored or broadcast.
 const isHex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+const num = (lo, hi) => v => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const oneOf = list => v => list.includes(v);
+const bool = v => typeof v === 'boolean';
 const RULES = {
-  preset: oneOf(['classic', 'pure', 'light', 'neon', 'cherry', 'rainbow', 'custom']),
+  // Además de los temas públicos, se admiten temas secretos desbloqueados (id "s_xxxx").
+  preset: v => ['classic', 'pure', 'light', 'neon', 'cherry', 'rainbow', 'custom'].includes(v) || (typeof v === 'string' && /^s_[a-z0-9]{1,16}$/.test(v)),
   bgMode: oneOf(['dynamic', 'fixed', 'gradient', 'blur', 'rainbow']),
   bgColor: isHex,
   accentMode: oneOf(['white', 'custom', 'auto']),
   accentColor: isHex,
-  blossoms: v => typeof v === 'boolean'
+  blossoms: v => typeof v === 'boolean',
+  scale: num(.7, 1.6),
+  radius: num(0, 40),
+  bgOpacity: num(.25, 1),
+  // Etapa 2: qué se muestra, tipografía, estilo de botones y forma de la portada.
+  showCover: bool, showArtist: bool, showLike: bool, showShuffle: bool, showRepeat: bool, showDevices: bool, updateCheck: bool, sfx: bool, showTime: bool, showVolume: bool,
+  font: oneOf(['inter', 'nunito', 'mono', 'outfit', 'dyslexic']),
+  btnStyle: oneOf(['raised', 'flat', 'outline', 'icon', 'wheel']),
+  coverShape: oneOf(['rounded', 'square', 'circle']),
+  layoutH: num(120, 800)   // último alto de diseño informado por la interfaz (evita parpadeo al iniciar)
 };
-const DEFAULTS = { preset: 'classic', bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff', blossoms: false };
+const DEFAULTS = { preset: 'classic', bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff', blossoms: false, scale: 1, radius: 28, bgOpacity: 1,
+  showCover: true, showArtist: true, showLike: true, showShuffle: true, showRepeat: true, showDevices: true, updateCheck: true, sfx: true, showTime: true, showVolume: true,
+  font: 'inter', btnStyle: 'raised', coverShape: 'rounded', layoutH: 484 };
 const sanitize = o => Object.fromEntries(Object.entries(RULES).filter(([k, ok]) => ok(o?.[k])).map(([k]) => [k, o[k]]));
 const cfgFile = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...DEFAULTS }, saveTimer;
 try { settings = { ...DEFAULTS, ...sanitize(JSON.parse(fs.readFileSync(cfgFile(), 'utf8'))) }; } catch { /* primer inicio / first run */ }
+BASE.height = settings.layoutH;
+// Escritura diferida: un selector de color emite decenas de cambios por segundo.
+const persist = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => fs.writeFile(cfgFile(), JSON.stringify(settings), e => e && console.error('Ajustes:', e.message)), 300); };
 
 function applySettings(next) {
+  const resized = next.scale !== settings.scale;
   settings = next;
-  clearTimeout(saveTimer);   // escritura diferida: un selector de color emite decenas de cambios por segundo
-  saveTimer = setTimeout(() => fs.writeFile(cfgFile(), JSON.stringify(settings), e => e && console.error('Ajustes:', e.message)), 300);
+  persist();
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings', settings);   // vista previa en vivo
+  if (resized) applyScale();
   return settings;
 }
+
+/**
+ * Redimensiona la ventana manteniendo su centro y dentro del monitor. La interfaz se escala sola al leer
+ * el nuevo ancho (ver fitScale en app.js).
+ */
+function applyScale(keepTop = false) {
+  if (!win || win.isDestroyed()) return;
+  const b = win.getBounds(), area = screen.getDisplayMatching(b).workArea;
+  const size = sizeFor(fitScale(settings.scale, area));
+  Object.assign(WIN, size);
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  const x = clamp(Math.round(b.x + b.width / 2 - size.width / 2), area.x, area.x + area.width - size.width);
+  // keepTop: un cambio de alto (p. ej. ocultar la portada) conserva el borde superior de la ventana.
+  const y = clamp(keepTop ? b.y : Math.round(b.y + b.height / 2 - size.height / 2), area.y, area.y + area.height - size.height);
+  win.setResizable(true); win.setBounds({ x: keepTop ? clamp(b.x, area.x, area.x + area.width - size.width) : x, y, ...size }); win.setResizable(false);   // setBounds exige resizable en Windows
+}
+// La interfaz informa su alto natural (px CSS sin escala) cuando cambian los elementos visibles.
+ipcMain.on('layout-height', (e, h) => {
+  if (e.sender !== win?.webContents || !num(120, 800)(h)) return;
+  h = Math.round(h); if (h === BASE.height) return;
+  BASE.height = h; settings = { ...settings, layoutH: h }; persist(); applyScale(true);
+});
+// ---------- Aviso de actualizaciones ----------
+// Consulta la última release publicada en GitHub (solo lectura, sin credenciales) y avisa si es más nueva.
+// No descarga ni instala nada: el botón abre la página de la release en el navegador. El renderer no envía
+// parámetros, por lo que no puede forzar una URL arbitraria.
+const REPO = 'SantiagoPages/Mini_Reproductor';
+const ver3 = v => String(v).replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
+const isNewer = (a, b) => { const x = ver3(a), y = ver3(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+ipcMain.handle('update:check', async () => {
+  if (!settings.updateCheck) return null;
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'mini-player' } });
+    if (!r.ok) return null;
+    const tag = (await r.json()).tag_name;
+    return typeof tag === 'string' && /^v?\d+(\.\d+){1,2}$/.test(tag) && isNewer(tag, app.getVersion()) ? { version: tag.replace(/^v/i, '') } : null;
+  } catch { return null; }
+});
+ipcMain.on('open-update', () => shell.openExternal(`https://github.com/${REPO}/releases/latest`));
+// ---------- Temas secretos ----------
+// Los paquetes cifrados (carpeta secretos/) se prueban contra el código ingresado. Los que descifran se validan
+// contra un esquema estricto (solo datos: colores, SVG, sonido) y se guardan cifrados con safeStorage; el código
+// no se guarda. Tras 5 fallos se bloquean los intentos 30 s.
+const SECRET_KEYS = ['bgMode', 'bgColor', 'accentMode', 'accentColor', 'radius', 'bgOpacity', 'font', 'btnStyle', 'coverShape'];
+const str = (v, n) => typeof v === 'string' && v.length <= n;
+function cleanPack(o) {
+  if (!o || typeof o !== 'object' || !/^s_[a-z0-9]{1,16}$/.test(o.id) || !str(o.label, 24) || !str(o.swatch, 200) || !/^[#a-z0-9(),.% -]+$/i.test(o.swatch)) return null;
+  const settings = Object.fromEntries(Object.entries(sanitize(o.settings)).filter(([k]) => SECRET_KEYS.includes(k)));
+  const decor = (Array.isArray(o.decor) ? o.decor : []).slice(0, 4).filter(d => d && ['top', 'bottom'].includes(d.at) && str(d.svg, 20000)).map(d => ({ at: d.at, svg: d.svg }));
+  const f = o.fall, fall = f && str(f.svg, 4000) && Number.isInteger(f.count) && f.count >= 1 && f.count <= 24 ? { svg: f.svg, count: f.count } : null;
+  // Imagen de fondo (data URI) con atenuación opcional, y sonido (mp3 en base64).
+  const image = str(o.image, 600000) && /^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(o.image) ? o.image : null;
+  const imageDim = num(0, .85)(o.imageDim) ? o.imageDim : 0;
+  const data = str(o.sound?.data, 300000) && /^[A-Za-z0-9+/=]+$/.test(o.sound.data) ? o.sound.data : null;
+  const sound = data ? { type: 'sample', volume: num(0, 1)(o.sound.volume) ? o.sound.volume : .5, data } : null;
+  const pad = num(0, 100)(o.pad) ? o.pad : 0;   // espacio extra abajo para que la decoración no tape los controles
+  return { id: o.id, label: o.label, swatch: o.swatch, settings, decor, fall, image, imageDim, pad, sound };
+}
+const packFile = () => path.join(app.getPath('userData'), 'secretos.bin');
+let packs = [], fails = 0, lockUntil = 0;
+function loadPacks() {
+  try { packs = JSON.parse(safeStorage.decryptString(fs.readFileSync(packFile()))).map(cleanPack).filter(Boolean); } catch { packs = []; }
+}
+function savePacks() {
+  try { if (safeStorage.isEncryptionAvailable()) fs.writeFileSync(packFile(), safeStorage.encryptString(JSON.stringify(packs))); } catch (e) { console.error('Secretos:', e.message); }
+}
+ipcMain.handle('secret:list', () => packs);
+ipcMain.handle('secret:unlock', async (e, code) => {
+  if (!str(code, 200) || code.trim().length < 3) return { ok: false };
+  if (Date.now() < lockUntil) return { ok: false, wait: true };
+  let found = null, files = [];
+  try { files = fs.readdirSync(path.join(__dirname, 'secretos')).filter(f => f.endsWith('.bin')); } catch { /* sin paquetes / no packs */ }
+  for (const f of files) {
+    try { found = cleanPack(await secretos.open(fs.readFileSync(path.join(__dirname, 'secretos', f)), code)); } catch { found = null; }
+    if (found) break;
+  }
+  if (!found) { if (++fails >= 5) { fails = 0; lockUntil = Date.now() + 30000; } return { ok: false }; }
+  fails = 0; packs = [...packs.filter(p => p.id !== found.id), found]; savePacks();
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('secrets', packs);
+  return { ok: true, label: found.label };
+});
 ipcMain.handle('settings:get', () => settings);
 ipcMain.handle('settings:set', (e, partial) => applySettings({ ...settings, ...sanitize(partial) }));
-ipcMain.handle('settings:reset', () => applySettings({ ...DEFAULTS }));
+ipcMain.handle('settings:reset', () => applySettings({ ...DEFAULTS, layoutH: settings.layoutH }));
 
-// Misma política de aislamiento para todas las ventanas. / Same isolation policy for every window.
+// Misma política de aislamiento para todas las ventanas.
 const WEBPREFS = { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, autoplayPolicy: 'no-user-gesture-required' };
 let settingsWin;
 function openSettings() {
   if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); return settingsWin.focus(); }
-  settingsWin = new BrowserWindow({ width: 400, height: 600, title: 'Ajustes', resizable: false, minimizable: false, maximizable: false, webPreferences: WEBPREFS });
+  settingsWin = new BrowserWindow({ width: 400, height: 780, title: 'Ajustes', resizable: false, minimizable: false, maximizable: false, webPreferences: WEBPREFS });
   settingsWin.setMenu(null);
   settingsWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   settingsWin.webContents.on('will-navigate', e => e.preventDefault());
@@ -190,8 +285,6 @@ ipcMain.on('copy-redirect', () => clipboard.writeText(ORIGIN + '/'));
 // Arrastre de ventana implementado manualmente: las regiones -webkit-app-region de Windows capturan
 // los eventos de ratón y bloquean los controles superpuestos. Se usa setBounds con tamaño fijo para
 // evitar derivas de tamaño con escalado de pantalla fraccionario.
-// Manual window dragging: Windows -webkit-app-region zones swallow mouse events and break overlapping controls.
-// Fixed-size setBounds avoids size drift under fractional DPI scaling.
 let dragFrom;
 ipcMain.on('drag-start', () => { const [x, y] = win.getPosition(); dragFrom = { x, y }; });
 ipcMain.on('drag-move', (e, dx, dy) => {
@@ -201,12 +294,13 @@ ipcMain.on('drag-move', (e, dx, dy) => {
 
 // Arranque: espera al CDM de Widevine, levanta el servidor local y crea la ventana.
 app.whenReady().then(async () => {
-  if (!gotLock) return;   // segunda instancia: no inicializar / second instance: skip initialization
+  if (!gotLock) return;   // segunda instancia: no inicializar
+  loadPacks();
   await components.whenReady();   // CDM de Widevine disponible antes de crear la ventana
   await serve();
   // Permisos de mínimo privilegio: solo se concede el acceso a DRM (EME).
-  // Least-privilege permissions: only DRM (EME) access is granted.
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === 'mediaKeySystem'));
+  Object.assign(WIN, sizeFor(fitScale(settings.scale, screen.getPrimaryDisplay().workArea)));
   win = new BrowserWindow({
     ...WIN, frame: false, transparent: true, resizable: false, hasShadow: false,
     backgroundColor: '#00000000',
@@ -216,7 +310,6 @@ app.whenReady().then(async () => {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', e => e.preventDefault());
   // El reproductor es la ventana principal: al cerrarlo se cierra todo, incluida la de ajustes.
-  // The player is the main window: closing it quits the app, including the settings window.
   win.on('closed', () => app.quit());
   win.loadURL(ORIGIN + '/');
   try { setupTray(); } catch (e) { console.error('Bandeja:', e.message); }
