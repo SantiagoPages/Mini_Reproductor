@@ -57,9 +57,19 @@ else app.on('second-instance', () => {
   if (win.isMinimized()) win.restore();
   win.show(); win.focus();
 });
-// Se desactiva el manejo nativo de teclas multimedia de Chromium; de lo contrario cada
-// pulsación se procesaría dos veces (nativo + globalShortcut).
-app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,MediaSessionService');
+// ---------- Plataforma ----------
+// Todo lo que depende del sistema operativo se concentra aquí para facilitar el soporte de Ubuntu.
+const IS_LINUX = process.platform === 'linux';
+if (IS_LINUX) {
+  // Wayland no permite que una aplicación fije su posición, la mantenga encima ni se arrastre a mano:
+  // se fuerza X11 (XWayland en sesiones Wayland), donde todo eso funciona igual que en Windows.
+  app.commandLine.appendSwitch('ozone-platform', 'x11');
+} else {
+  // Se desactiva el manejo nativo de teclas multimedia de Chromium; de lo contrario cada
+  // pulsación se procesaría dos veces (nativo + globalShortcut). En Linux se deja activo: Chromium
+  // publica el reproductor por MPRIS y el escritorio gestiona esas teclas (globalShortcut no las ve en Wayland).
+  app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,MediaSessionService');
+}
 
 /**
  * Servidor HTTP local enlazado únicamente a loopback.
@@ -135,6 +145,7 @@ function setupTray() {
 }
 // Teclas multimedia globales (activas con la aplicación en segundo plano); se reenvían al renderer.
 function registerMediaKeys() {
+  if (IS_LINUX) return;   // las gestiona el sistema vía MPRIS (ver arriba)
   const keys = { MediaPlayPause: 'toggle', MediaNextTrack: 'next', MediaPreviousTrack: 'prev' };
   for (const [k, cmd] of Object.entries(keys)) globalShortcut.register(k, () => win?.webContents.send('media', cmd));
 }
@@ -324,6 +335,58 @@ ipcMain.on('open-settings', openSettings);
 // Acciones del asistente de configuración. No reciben parámetros del renderer: no hay entrada que validar.
 ipcMain.on('open-dashboard', () => shell.openExternal('https://developer.spotify.com/dashboard'));
 ipcMain.on('copy-redirect', () => clipboard.writeText(ORIGIN + '/'));
+// ---------- Posición de la ventana ----------
+// Se guarda en un archivo aparte (no pasa por la validación de ajustes del renderer): monitor (id) y
+// posición relativa a él. Al iniciar se restaura en ese monitor; si ya no existe, se centra en el principal.
+const posFile = () => path.join(app.getPath('userData'), 'window.json');
+const clampTo = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+function loadPos() {
+  try {
+    const p = JSON.parse(fs.readFileSync(posFile(), 'utf8'));
+    return ['id', 'rx', 'ry'].every(k => Number.isFinite(p?.[k])) ? p : null;
+  } catch { return null; }
+}
+// Coordenadas de una ventana centrada en el área útil de un monitor (con el tamaño que le corresponde allí).
+function centeredIn(display) {
+  const area = display.workArea, size = sizeFor(fitScale(settings.scale, area));
+  return { size, x: Math.round(area.x + (area.width - size.width) / 2), y: Math.round(area.y + (area.height - size.height) / 2) };
+}
+// Calcula posición y tamaño iniciales a partir de lo guardado; nunca deja la ventana fuera de pantalla.
+function startBounds() {
+  const saved = loadPos(), display = saved && screen.getAllDisplays().find(d => d.id === saved.id);
+  if (!display) { const c = centeredIn(screen.getPrimaryDisplay()); return { ...c.size, x: c.x, y: c.y }; }
+  const area = display.workArea, size = sizeFor(fitScale(settings.scale, area));
+  return { ...size,
+    x: clampTo(Math.round(display.bounds.x + saved.rx), area.x, area.x + area.width - size.width),
+    y: clampTo(Math.round(display.bounds.y + saved.ry), area.y, area.y + area.height - size.height) };
+}
+// Escritura síncrona de ajustes y posición; también se usa al cerrar para no perder cambios pendientes.
+function flushState() {
+  try {
+    clearTimeout(saveTimer); fs.writeFileSync(cfgFile(), JSON.stringify(settings));
+    if (win && !win.isDestroyed()) {
+      const b = win.getBounds(), d = screen.getDisplayMatching(b);
+      fs.writeFileSync(posFile(), JSON.stringify({ id: d.id, rx: b.x - d.bounds.x, ry: b.y - d.bounds.y }));
+    }
+  } catch (e) { console.error('Estado:', e.message); }
+}
+let posTimer;
+const savePosSoon = () => { clearTimeout(posTimer); posTimer = setTimeout(flushState, 400); };   // tras soltar la ventana
+// Atajo global: devuelve la ventana al centro del monitor donde está el cursor. Sirve aunque la ventana
+// haya quedado fuera de alcance, oculta en la bandeja o minimizada.
+function centerWindow() {
+  if (!win || win.isDestroyed()) return;
+  const c = centeredIn(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()));
+  Object.assign(WIN, c.size);
+  if (win.isMinimized()) win.restore();
+  win.setResizable(true); win.setBounds({ x: c.x, y: c.y, ...c.size }); win.setResizable(false);
+  win.show(); win.focus();
+  savePosSoon();
+}
+const CENTER_KEY = 'CommandOrControl+Alt+C';
+function registerCenterKey() {
+  if (!globalShortcut.register(CENTER_KEY, centerWindow)) console.error('Atajo ' + CENTER_KEY + ' no disponible (otra aplicación lo usa).');
+}
 // Arrastre de ventana implementado manualmente: las regiones -webkit-app-region de Windows capturan
 // los eventos de ratón y bloquean los controles superpuestos. Se usa setBounds con tamaño fijo para
 // evitar derivas de tamaño con escalado de pantalla fraccionario.
@@ -331,7 +394,7 @@ let dragFrom;
 ipcMain.on('drag-start', () => { const [x, y] = win.getPosition(); dragFrom = { x, y }; });
 ipcMain.on('drag-move', (e, dx, dy) => {
   if (dragFrom && Number.isFinite(dx) && Number.isFinite(dy))
-    win.setBounds({ x: Math.round(dragFrom.x + dx), y: Math.round(dragFrom.y + dy), ...WIN });
+    { win.setBounds({ x: Math.round(dragFrom.x + dx), y: Math.round(dragFrom.y + dy), ...WIN }); savePosSoon(); }
 });
 
 // Arranque: espera al CDM de Widevine, levanta el servidor local y crea la ventana.
@@ -342,9 +405,10 @@ app.whenReady().then(async () => {
   await serve();
   // Permisos de mínimo privilegio: solo se concede el acceso a DRM (EME).
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === 'mediaKeySystem'));
-  Object.assign(WIN, sizeFor(fitScale(settings.scale, screen.getPrimaryDisplay().workArea)));
+  const start = startBounds();
+  Object.assign(WIN, { width: start.width, height: start.height });
   win = new BrowserWindow({
-    ...WIN, frame: false, transparent: true, resizable: false, hasShadow: false,
+    ...start, frame: false, transparent: true, resizable: false, hasShadow: false,
     backgroundColor: '#00000000',
     webPreferences: WEBPREFS
   });
@@ -356,7 +420,10 @@ app.whenReady().then(async () => {
   win.loadURL(ORIGIN + '/');
   try { setupTray(); } catch (e) { console.error('Bandeja:', e.message); }
   try { registerMediaKeys(); } catch (e) { console.error('Teclas multimedia:', e.message); }
+  try { registerCenterKey(); } catch (e) { console.error('Atajo de centrado:', e.message); }
+  if (!safeStorage.isEncryptionAvailable())
+    console.error('Aviso: no hay almacén de claves (en Ubuntu, instalar/desbloquear gnome-keyring); la sesión de Spotify no se recordará.');
 });
 // Red de seguridad: al salir se destruyen la ventana de ajustes y la del aviso aunque sigan abiertas.
-app.on('before-quit', () => { for (const w of [settingsWin, toastWin]) if (w && !w.isDestroyed()) w.destroy(); });
+app.on('before-quit', () => { flushState(); for (const w of [settingsWin, toastWin]) if (w && !w.isDestroyed()) w.destroy(); });
 app.on('window-all-closed', () => app.quit());

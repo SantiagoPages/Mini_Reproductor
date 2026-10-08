@@ -13,6 +13,8 @@ audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
 - Botón **+** en los resultados para agregar canciones a la cola.
 - Selector de **dispositivo** de reproducción.
 - Atajos de teclado: Espacio (pausa), ← → (anterior/siguiente), ↑ ↓ (volumen), M (silencio) y L (Me gusta).
+- Recuerda la posición y el monitor de la ventana; si el monitor ya no está, vuelve al principal. Ctrl+Alt+C la centra en el monitor donde esté el mouse (útil si queda en un lugar inalcanzable).
+- Preparado para Ubuntu: usa X11/XWayland, deja las teclas multimedia al sistema y avisa si falta el llavero (próximamente empaquetado .AppImage/.deb).
 - Aviso opcional al cambiar de canción, en una ventanita abajo a la derecha, cuando el reproductor está en segundo plano.
 - Personalización: temas, tamaño y forma de la ventana, 5 tipografías, 5 estilos de botones
   (incluida una rueda estilo iPod), forma de la portada y alto automático.
