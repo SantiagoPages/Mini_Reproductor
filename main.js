@@ -401,7 +401,9 @@ ipcMain.on('drag-move', (e, dx, dy) => {
 app.whenReady().then(async () => {
   if (!gotLock) return;   // segunda instancia: no inicializar
   loadPacks();
-  await components.whenReady();   // CDM de Widevine disponible antes de crear la ventana
+  // CDM de Widevine disponible antes de crear la ventana. Si no se puede obtener (por ejemplo, sin internet en el primer
+  // inicio, cuando Linux lo descarga), la app abre igual: sin el CDM la reproducción falla, pero no queda invisible.
+  try { await components.whenReady(); } catch (e) { console.error('Widevine no disponible:', e.message); }
   await serve();
   // Permisos de mínimo privilegio: solo se concede el acceso a DRM (EME).
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === 'mediaKeySystem'));

@@ -43,9 +43,12 @@ Listo. La próxima vez que abras la app entra sola, sin pedirte nada.
 
 
 CÓMO ELEGIR MÚSICA
-- Botón de la lupa: abre la biblioteca, con cinco pestañas:
-    Buscar (tus playlists y un buscador), Me gusta, Top (lo que más escuchás),
-    Cola e Historial. Con el botón "+" de cada canción la agregás a la cola.
+- Botón de la lupa: abre la biblioteca, con seis pestañas:
+    Buscar (tus playlists y un buscador), Me gusta (el corazón), Top (lo que más
+    escuchás), Colección (álbumes guardados y artistas), Cola y Reciente.
+    Con el botón "+" de cada canción la agregás a la cola.
+- Botón "+" junto al título de la canción que suena: abre una ventanita para
+    guardarla en Me gusta o en una de tus playlists.
 - Botón de la pantalla: elegís en qué dispositivo suena la música.
 - Botón de los ajustes: temas, tipografía, estilo de botones y qué se muestra.
 - También podés copiar un link de Spotify (Compartir > Copiar enlace) y pegarlo
@@ -62,12 +65,25 @@ PROBLEMAS FRECUENTES
   Confirmá que tu cuenta sea Premium. Si lo es, cerrá el reproductor y volvelo
   a abrir.
 
+- Aparece "Spotify limitó las consultas, esperá X min":
+  Spotify pone un tope a las consultas de cada app. Esperá el tiempo que indica
+  el mensaje sin abrir la app en varios lugares a la vez; vuelve a andar sola.
+
 - Dice que el puerto 8888 está ocupado:
   Otro programa lo está usando. Cerralo y volvé a abrir Mini Player.
 
 - Quiero empezar de cero (cambiar de cuenta o de Client ID):
   Cerrá la app y borrá el archivo  %APPDATA%\mini-player\session.bin
   (pegá esa ruta en la barra del Explorador de archivos de Windows).
+  En Ubuntu el archivo está en  ~/.config/mini-player/session.bin
+
+- En Ubuntu, la app no recuerda la sesión:
+  Falta el llavero del sistema o está bloqueado. Instalá y desbloqueá
+  gnome-keyring (viene con el escritorio de Ubuntu) y volvé a conectarte.
+
+- Después de actualizar, la app pide conectarse de nuevo:
+  Es normal cuando una versión agrega permisos (por ejemplo, para guardar en
+  playlists). Se hace una sola vez.
 
 - Si tu suscripción Premium se vence, el reproductor deja de funcionar hasta que
   la renueves, porque la app que creaste en el paso 3 depende de tu cuenta.

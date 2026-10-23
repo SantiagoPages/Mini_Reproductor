@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 
 // Elementos que se pueden ocultar (SHOWS), formas de portada (SHAPES) y opciones varias (MISC).
-const SHOWS = [['showCover', 'La portada'], ['showArtist', 'El artista'], ['showLike', 'Me gusta (+)'], ['showShuffle', 'Aleatorio'], ['showRepeat', 'Repetir'], ['showTime', 'Barra de tiempo y tiempos'], ['showVolume', 'Volumen']];
+const SHOWS = [['showCover', 'La portada'], ['showArtist', 'El artista'], ['showLike', 'Botón + (Me gusta y playlists)'], ['showShuffle', 'Aleatorio'], ['showRepeat', 'Repetir'], ['showTime', 'Barra de tiempo y tiempos'], ['showVolume', 'Volumen']];
 const SHAPES = [['rounded', 'Redondeada'], ['square', 'Cuadrada'], ['circle', 'Círculo']];
 SHOWS.push(['showDevices', 'Elegir dispositivo']);
 const MISC = [['updateCheck', 'Avisar si hay una versión nueva (consulta GitHub al iniciar)'], ['trackNotice', 'Avisar cuando cambia la canción (solo con la ventana en segundo plano)']];

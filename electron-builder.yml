@@ -3,6 +3,11 @@ productName: Mini Player
 directories:
   output: dist
 
+# Metadatos que algunos formatos exigen (el .deb requiere la página del proyecto) sin depender del package.json.
+extraMetadata:
+  homepage: https://github.com/SantiagoPages/Mini_Reproductor
+  desktopName: mini-player.desktop
+
 # Reutiliza el Electron con Widevine (castLabs) de node_modules en lugar de descargar la build estándar.
 electronDist: node_modules/electron/dist
 npmRebuild: false
@@ -39,6 +44,26 @@ win:
   target:
     - nsis       # instalador por usuario (sin elevación de privilegios)
     - portable   # ejecutable autónomo, sin instalación
+
+# Linux (se construye en Ubuntu con construir.sh). El .deb es la instalación recomendada: configura bien el
+# sandbox de Chromium; el .AppImage es portable pero en Ubuntu 24.04 puede requerir un ajuste (ver README).
+linux:
+  icon: icon.png
+  category: AudioVideo
+  executableName: mini-player
+  syncDesktopName: true   # asocia la ventana con su lanzador en GNOME (ícono correcto en la barra)
+  synopsis: Mini reproductor de Spotify
+  description: Reproductor mínimo y personalizable de Spotify (requiere Premium).
+  maintainer: SantiagoPages <noreply@github.com>
+  artifactName: mini-player-${version}-linux-${arch}.${ext}
+  # Solo identifica el repositorio (la herramienta lo necesita para el .deb); nunca se publica desde acá.
+  publish:
+    provider: github
+    owner: SantiagoPages
+    repo: Mini_Reproductor
+  target:
+    - deb
+    - AppImage
 
 nsis:
   oneClick: true

@@ -14,7 +14,7 @@ const REDIRECT = location.origin + '/';   // el origen lo define el servidor loc
 // Enlace o URI de Spotify (playlist, álbum o pista) con su ID de 22 caracteres.
 const LINK = /(playlist|album|track)[\/:]([A-Za-z0-9]{22})/;
 // Permisos solicitados. Si esta lista cambia, la sesión guardada se invalida y se pide reautorización.
-const SCOPE = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state playlist-read-private playlist-read-collaborative user-library-read user-library-modify user-read-recently-played user-top-read';
+const SCOPE = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state playlist-read-private playlist-read-collaborative user-library-read user-library-modify user-read-recently-played user-top-read playlist-modify-public playlist-modify-private user-follow-read';
 // Utilidades PKCE: codificación base64url y valores aleatorios criptográficamente seguros.
 const b64 = a => btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 const rand = n => b64(crypto.getRandomValues(new Uint8Array(n)));
@@ -53,9 +53,30 @@ const token = async () => {
   await refreshing;
   return S.at;
 };
-/** Cliente mínimo de la Web API: devuelve la Response sin interpretar. */
-const sp = async (p, m = 'GET', b) => fetch('https://api.spotify.com/v1' + p, { method: m,
-  headers: { Authorization: 'Bearer ' + await token(), 'Content-Type': 'application/json' }, body: b && JSON.stringify(b) });
+/**
+ * Cliente mínimo de la Web API: devuelve la Response sin interpretar.
+ * Si Spotify limita las consultas (429) se respeta la espera que indica (cabecera Retry-After o, si no llega, una
+ * espera que crece en cada intento): mientras dure no se hace ningún pedido de ese grupo, porque insistir puede
+ * alargar el castigo. Hay dos grupos con espera propia: los datos (listas, búsqueda, Me gusta) y los comandos de
+ * reproducción (play, pausa, volumen, cola…), que siguen funcionando aunque los datos estén limitados.
+ */
+const blocked = { data: 0, cmd: 0 }, strikes = { data: 0, cmd: 0 };
+const kind = (p, m) => m !== 'GET' && p.startsWith('/me/player') ? 'cmd' : 'data';
+const sp = async (p, m = 'GET', b) => {
+  const k = kind(p, m);
+  if (Date.now() < blocked[k]) return new Response(null, { status: 429 });   // en espera: sin tocar la red
+  const r = await fetch('https://api.spotify.com/v1' + p, { method: m,
+    headers: { Authorization: 'Bearer ' + await token(), 'Content-Type': 'application/json' }, body: b && JSON.stringify(b) });
+  if (r.status === 429) {
+    const hdr = Number(r.headers.get('Retry-After')); strikes[k]++;
+    blocked[k] = Date.now() + Math.min(hdr > 0 ? hdr : 60 * 2 ** (strikes[k] - 1), 86400) * 1000;   // máximo un día
+  } else if (r.ok) strikes[k] = 0;
+  return r;
+};
+/** Tiempo de espera restante de un grupo, en palabras. */
+const waitText = k => { const s = Math.max(1, Math.ceil((blocked[k] - Date.now()) / 1000)); return s < 90 ? s + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : Math.round(s / 3600) + ' h'; };
+/** Motivo de un error de la API: el 429 se explica en lugar de mostrar solo el número. */
+const why = (s, k = 'data') => s === 429 ? 'Spotify limitó las consultas, esperá ' + waitText(k) : s;
 
 /** Muestra la pantalla de configuración/conexión, con un mensaje opcional. */
 function showLogin(msg = '') { $('player').hidden = true; $('setup').hidden = false; $('msg').textContent = msg; }
@@ -107,7 +128,7 @@ async function render() {
   for (const p of document.querySelectorAll('.pp svg')) p.innerHTML = st.paused ? ICON.play : ICON.pause;   // botón central (normal y rueda)
   $('dur').textContent = fmt(st.duration);
   let changed = false;   // true si cambió la pista (la primera al abrir la app no cuenta): sirve para el aviso
-  if (t.uri !== curUri) { changed = !!curUri; curUri = t.uri; syncLike(t.uri); if (tab === 'queue' && !$('library').hidden) loadQueue(); }   // la cola cambia con cada pista
+  if (t.uri !== curUri) { if (!$('pick').hidden) togglePick(false); changed = !!curUri; curUri = t.uri; syncLike(t.uri); if (tab === 'queue' && !$('library').hidden) loadQueue(); }   // la cola cambia con cada pista
   const url = t.album.images.reduce((a, b) => (b.height || 0) > (a.height || 0) ? b : a, t.album.images[0] || {}).url;
   let cover = coverData;   // portada vigente (la anterior mientras no haya otra)
   if (url && url !== lastCover) {
@@ -349,7 +370,7 @@ async function togglePlayback() {
   if (!player || !dev) return;
   if (await player.getCurrentState()) return player.togglePlay();
   const r = await sp('/me/player', 'PUT', { device_ids: [dev], play: true });
-  if (!r.ok) status('No se pudo iniciar la reproducción (' + r.status + ')');
+  if (!r.ok) status('No se pudo iniciar la reproducción (' + why(r.status, 'cmd') + ')');
 }
 $('play').onclick = togglePlayback;
 // Anterior: si la pista ya lleva más de 4 s, se reinicia en vez de volver a la anterior (como en la app de Spotify).
@@ -397,7 +418,7 @@ let curUri = '', liked = false, busy = false, likeTouched = 0;
 /** Refleja el estado de Me gusta en el botón (ícono y descripción). */
 function paintLike(on) {
   liked = on; $('like').classList.toggle('on', on); $('like').firstElementChild.innerHTML = on ? ICON.check : ICON.plus;
-  $('like').title = on ? 'Quitar de tus Me gusta' : 'Guardar en tus Me gusta';
+  $('like').title = on ? 'Guardada en Me gusta · elegir dónde guardar' : 'Guardar en… (tecla L: Me gusta)';
 }
 /** Consulta a Spotify si la pista actual está guardada; oculta el botón si no es una canción (p. ej. un episodio). */
 async function syncLike(uri) {
@@ -405,24 +426,25 @@ async function syncLike(uri) {
   paintLike(false);
   try { const r = await sp('/me/library/contains?uris=' + encodeURIComponent(uri)); if (r.ok && uri === curUri) paintLike((await r.json())[0] === true); } catch {}
 }
-$('like').onclick = async () => {
+/** Guarda o quita la pista actual de Me gusta (tecla L y fila "Canciones que te gustan" de la mini ventana). */
+async function toggleLike() {
   if (busy || !curUri) return; busy = true; likeTouched = Date.now(); const want = !liked; paintLike(want);
   const r = await sp('/me/library?uris=' + encodeURIComponent(curUri), want ? 'PUT' : 'DELETE');
-  if (!r.ok) { paintLike(!want); status('No se pudo guardar (' + r.status + ')'); }
-  busy = false;
-};
+  if (!r.ok) { paintLike(!want); status('No se pudo guardar (' + why(r.status) + ')'); }
+  delete cache.liked; busy = false; if (!$('pick').hidden) paintPickLike();   // la lista de Me gusta guardada quedó vieja
+}
+$('like').onclick = () => togglePick();
 
-// Sondeo periódico: refleja cambios hechos desde otros dispositivos (el SDK no emite eventos para ello).
-// Se omite con la ventana oculta y tras una acción reciente del usuario, para no sobrescribirla.
-setInterval(async () => {
+/** Consulta si la pista actual está en Me gusta (cambios hechos desde otro dispositivo). Se omite tras una acción local reciente. */
+async function checkLike() {
   const uri = curUri;
-  if (!uri.startsWith('spotify:track:') || document.hidden || busy || Date.now() - likeTouched < 4000) return;
+  if (!uri.startsWith('spotify:track:') || busy || Date.now() - likeTouched < 4000) return;
   try {
     const r = await sp('/me/library/contains?uris=' + encodeURIComponent(uri));
     if (!r.ok || uri !== curUri || busy) return;
     const v = (await r.json())[0] === true; if (v !== liked) paintLike(v);
   } catch {}
-}, 5000);
+}
 
 // ---------- Aleatorio ----------
 // El estado real proviene del SDK (state.shuffle); el botón solo solicita el cambio a la Web API.
@@ -431,7 +453,7 @@ function paintShuffle(on) { shuffled = on; $('shuf').classList.toggle('on', on);
 $('shuf').onclick = async () => {
   if (!dev) return; const want = !shuffled; paintShuffle(want);
   const r = await sp(`/me/player/shuffle?state=${want}&device_id=${dev}`, 'PUT');
-  if (!r.ok) { paintShuffle(!want); status('No se pudo cambiar el aleatorio (' + r.status + ')'); }
+  if (!r.ok) { paintShuffle(!want); status('No se pudo cambiar el aleatorio (' + why(r.status, 'cmd') + ')'); }
 };
 
 // ---------- Repetir ----------
@@ -446,7 +468,7 @@ function paintRepeat(m) {
 $('rep').onclick = async () => {
   if (!dev) return; const prev = repMode, want = (prev + 1) % 3; paintRepeat(want);
   const r = await sp(`/me/player/repeat?state=${REPEAT[want]}&device_id=${dev}`, 'PUT');
-  if (!r.ok) { paintRepeat(prev); status('No se pudo cambiar el modo de repetición (' + r.status + ')'); }
+  if (!r.ok) { paintRepeat(prev); status('No se pudo cambiar el modo de repetición (' + why(r.status, 'cmd') + ')'); }
 };
 
 // ---------- Volumen ----------
@@ -477,17 +499,29 @@ function toggleMute() {
   if (v > 0) { keepVol(v / 100); applyVolume(0); } else applyVolume(lastVol * 100);
 }
 $('mute').onclick = toggleMute;
-// Sondeo de volumen: sincroniza cambios remotos (Spotify Connect) solo si este dispositivo es el activo
-// y la ventana está visible.
-setInterval(async () => {
-  if (!dev || document.hidden || Date.now() - volTouched < 3000) return;   // período de gracia tras una interacción local
+/** Consulta el volumen del dispositivo (cambios remotos por Spotify Connect), solo si este reproductor es el activo. */
+async function checkVolume() {
+  if (!dev || Date.now() - volTouched < 3000) return;   // período de gracia tras una interacción local
   try {
     const r = await sp('/me/player'); if (r.status !== 200) return;
     const d = (await r.json()).device;
     if (d?.id !== dev || d.volume_percent == null || Math.abs(d.volume_percent - $('vol').value) < 2) return;
     $('vol').value = d.volume_percent; volLabel(); paintVol(d.volume_percent); keepVol(d.volume_percent / 100); try { localStorage.setItem('vol', d.volume_percent / 100); } catch {}
   } catch {}
-}, 3000);
+}
+
+// ---------- Sincronización con otros dispositivos ----------
+// Sin consultas permanentes (cuidan el cupo de la API en modo desarrollo): el corazón de Me gusta y el volumen se
+// consultan una sola vez al mirar la ventana (foco, volver a mostrarla o pasar el mouse), con 30 s como mínimo
+// entre consultas. Con la biblioteca abierta, la pestaña actual se refresca cada minuto (ver más abajo).
+let lastSync = 0;
+function syncRemote() {
+  if (document.hidden || $('player').hidden || Date.now() - lastSync < 30000) return;
+  lastSync = Date.now(); checkLike(); checkVolume();
+}
+window.addEventListener('focus', syncRemote);
+document.addEventListener('visibilitychange', syncRemote);
+document.documentElement.addEventListener('pointerenter', syncRemote);
 
 // ---------- Rueda estilo MP4 ----------
 // MENU abre los ajustes; VOL activa un modo en el que ◀ ▶ pasan a ser − / + (5 %) y que se desactiva solo a los
@@ -520,14 +554,14 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || $('player').hidden) return;
   const el = e.target, isInput = el.tagName === 'INPUT', onRange = isInput && el.type === 'range';
   if (isInput && !onRange) return;
-  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, listOpen = !$('library').hidden || !$('devs').hidden;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, listOpen = !$('library').hidden || !$('devs').hidden || !$('pick').hidden;
   let used = true;
   if (k === ' ') { if (!e.repeat) togglePlayback(); }
   else if (k === 'ArrowLeft' && !onRange) goPrev();
   else if (k === 'ArrowRight' && !onRange) player?.nextTrack();
   else if ((k === 'ArrowUp' || k === 'ArrowDown') && !onRange && !listOpen) nudge(k === 'ArrowUp' ? 5 : -5);
   else if (k === 'm') { if (!e.repeat) toggleMute(); }
-  else if (k === 'l') { if (!e.repeat && $('like').offsetParent) $('like').click(); }   // sin efecto si el botón está oculto
+  else if (k === 'l') { if (!e.repeat && $('like').offsetParent) toggleLike(); }   // sin efecto si el botón está oculto
   else used = false;
   if (used) e.preventDefault();
 });
@@ -544,13 +578,13 @@ async function playUri(uri, ctx) {
     body = ctx ? { context_uri: ctx, offset: { uri } } : { uris: [uri] };
   }
   const r = await sp('/me/player/play?device_id=' + dev, 'PUT', body);
-  status(r.ok ? '' : 'No se pudo reproducir (' + r.status + ')'); return r.ok;
+  status(r.ok ? '' : 'No se pudo reproducir (' + why(r.status, 'cmd') + ')'); return r.ok;
 }
 /** Reproduce una lista de pistas empezando por `uri`, para que la reproducción continúe con las siguientes. */
 async function playTracks(list, uri) {
   if (!dev) { status('El reproductor aún no está listo'); return false; }
   const r = await sp('/me/player/play?device_id=' + dev, 'PUT', { uris: list.slice(0, 100), offset: { uri } });
-  status(r.ok ? '' : 'No se pudo reproducir (' + r.status + ')'); return r.ok;
+  status(r.ok ? '' : 'No se pudo reproducir (' + why(r.status, 'cmd') + ')'); return r.ok;
 }
 // Elige la imagen más chica de la lista (suficiente para las miniaturas).
 const img = a => a?.length ? a[a.length - 1].url : null;
@@ -575,7 +609,7 @@ function row(o) {
     q.onclick = e => { e.stopPropagation(); addToQueue(o.uri, q); };
     li.append(q);
   }
-  const go = async () => { if (await (o.list ? playTracks(o.list, o.uri) : playUri(o.uri, o.ctx))) toggleLib(false); };
+  const go = o.open || (async () => { if (await (o.list ? playTracks(o.list, o.uri) : playUri(o.uri, o.ctx))) toggleLib(false); });
   li.onclick = go; li.onkeydown = e => { if (e.key === 'Enter' && e.target === li) go(); };
   return li;
 }
@@ -583,12 +617,29 @@ function row(o) {
 async function addToQueue(uri, btn) {
   if (!dev) return status('El reproductor aún no está listo');
   const r = await sp('/me/player/queue?uri=' + encodeURIComponent(uri) + '&device_id=' + dev, 'POST');
-  if (!r.ok) return status(r.status === 404 ? 'Primero reproducí algo en este reproductor' : 'No se pudo agregar a la cola (' + r.status + ')');
+  if (!r.ok) return status(r.status === 404 ? 'Primero reproducí algo en este reproductor' : 'No se pudo agregar a la cola (' + why(r.status, 'cmd') + ')');
   btn.firstElementChild.innerHTML = ICON.check; status('Agregada a la cola');
   setTimeout(() => { btn.firstElementChild.innerHTML = ICON.plus; status(''); }, 1500);
 }
 // Reemplaza el contenido de la lista y vuelve al principio.
-const fill = parts => { const l = $('list'); l.replaceChildren(...parts); l.scrollTop = 0; };
+// En las actualizaciones automáticas ("quiet") no se muestra "Cargando…" ni se mueve el scroll de la lista, y un
+// error pasajero no borra lo que ya se estaba viendo.
+let quiet = false;
+const fill = parts => {
+  const l = $('list'); if (quiet && parts.length === 1) return;   // aviso suelto (cargando, error): se conserva la lista actual
+  const y = l.scrollTop; l.replaceChildren(...parts); l.scrollTop = quiet ? y : 0;
+};
+// Caché de pestañas: al volver a una ya cargada se muestra al instante, sin consultar de nuevo (cuida el cupo de la
+// API). Si una consulta falla (p. ej. por el límite de Spotify), se muestra lo último cargado en lugar de un error.
+const cache = {}, ttl = key => key === 'history' ? 60000 : 180000;
+/** Muestra una lista cargada con éxito y la guarda para la próxima vez. */
+const keep = (key, parts) => { cache[key] = { t: Date.now(), parts }; fill(parts); };
+/** Muestra el fallo de una carga: lo último guardado con un aviso, o el error si no hay nada guardado. */
+const failed = (key, label, code) => {
+  if (quiet) return;   // las actualizaciones automáticas no pisan lo que ya se ve
+  const c = cache[key];
+  fill(c ? [note('Mostrando lo último cargado (' + why(code) + ')'), ...c.parts] : [note('No se pudo cargar ' + label + ' (' + why(code) + ')')]);
+};
 // Subtítulo de una playlist: autor.
 const owner = p => 'Playlist · ' + (p.owner?.display_name || '');
 
@@ -597,20 +648,20 @@ async function loadPlaylists() {
   fill([note('Cargando…')]);
   let url = '/me/playlists?limit=50', out = [];
   for (let i = 0; i < 3 && url; i++) {
-    const r = await sp(url); if (!r.ok) return fill([note('No se pudieron cargar tus playlists (' + r.status + ')')]);
+    const r = await sp(url); if (!r.ok) return tab === 'search' && !$('q').value.trim() ? failed('playlists', 'tus playlists', r.status) : undefined;
     if (tab !== 'search') return;
     const d = await r.json(); out.push(...d.items.filter(Boolean));
     url = d.next ? d.next.replace('https://api.spotify.com/v1', '') : null;
   }
   if ($('q').value.trim()) return;
-  fill([sec('Tus playlists'), ...out.map(p => row({ name: p.name, sub: owner(p), uri: p.uri, img: img(p.images) }))]);
+  keep('playlists', [sec('Tus playlists'), ...out.map(p => row({ name: p.name, sub: owner(p), uri: p.uri, img: img(p.images) }))]);
 }
-// El modo desarrollo limita la búsqueda a 10 resultados por consulta; se piden 3 por tipo.
+// El modo desarrollo limita la búsqueda a 10 resultados por consulta; se piden 10 por tipo (el máximo).
 /** Busca canciones, álbumes, artistas y playlists y arma la lista de resultados. */
 async function search(q) {
-  const r = await sp('/search?' + new URLSearchParams({ q, type: 'track,album,playlist,artist', limit: 3 }));
+  const r = await sp('/search?' + new URLSearchParams({ q, type: 'track,album,playlist,artist', limit: 10 }));
   if (tab !== 'search' || q !== $('q').value.trim()) return;   // descarta respuestas obsoletas (el usuario siguió escribiendo)
-  if (!r.ok) return fill([note('Error al buscar (' + r.status + ')')]);
+  if (!r.ok) return fill([note('Error al buscar (' + why(r.status) + ')')]);
   const d = await r.json(), parts = [];
   const add = (title, o, map) => { const xs = (o?.items || []).filter(Boolean); if (xs.length) parts.push(sec(title), ...xs.map(x => row(map(x)))); };
   add('Canciones', d.tracks, t => ({ name: t.name, sub: t.artists.map(a => a.name).join(', '), uri: t.uri, ctx: t.album?.uri, img: img(t.album?.images) }));
@@ -619,7 +670,112 @@ async function search(q) {
   add('Playlists', d.playlists, p => ({ name: p.name, sub: owner(p), uri: p.uri, img: img(p.images) }));
   fill(parts.length ? parts : [note('Sin resultados')]);
 }
-// Pestañas de la vista de biblioteca: Buscar · Me gusta · Top · Cola · Historial. Cada carga descarta su resultado
+/** Fila genérica con textContent (sin reproducir): usada por la mini ventana y la vista de artista. */
+function listRow({ name, sub, img: src, on, onclick }) {
+  const li = document.createElement('li'); li.className = 'it' + (on ? ' cur' : ''); li.tabIndex = 0; li.setAttribute('role', 'button');
+  if (src !== undefined) {
+    const th = document.createElement('div'); th.className = 'th';
+    if (src?.startsWith('https://')) th.style.backgroundImage = `url("${src.replace(/"/g, '%22')}")`;
+    li.append(th);
+  }
+  const tx = document.createElement('div'), b = document.createElement('b'), s = document.createElement('span'); tx.className = 'tx';
+  b.textContent = name; s.textContent = sub || ''; tx.append(b, s); li.append(tx);
+  li.onclick = onclick; li.onkeydown = e => { if (e.key === 'Enter') onclick(); };
+  return li;
+}
+
+// ---------- Mini ventana "Guardar en…" ----------
+// El botón + abre una lista con Me gusta y las playlists que el usuario puede editar (propias o colaborativas).
+let meId = null, plCache = null, plAt = 0;
+/** Id del usuario actual (para distinguir sus playlists de las que solo sigue). */
+async function myId() { if (!meId) { const r = await sp('/me'); if (r.ok) meId = (await r.json()).id; } return meId; }
+/** Playlists editables del usuario (hasta 150), con caché de un minuto. */
+async function editablePlaylists() {
+  if (plCache && Date.now() - plAt < 60000) return plCache;
+  const id = await myId(); let url = '/me/playlists?limit=50', out = [];
+  for (let i = 0; i < 3 && url; i++) {
+    const r = await sp(url); if (!r.ok) throw r.status;
+    const d = await r.json(); out.push(...(d.items || []).filter(Boolean));
+    url = d.next ? d.next.replace('https://api.spotify.com/v1', '') : null;
+  }
+  plCache = out.filter(p => p.collaborative || (id && p.owner?.id === id)); plAt = Date.now();
+  return plCache;
+}
+/** Fila "Canciones que te gustan": guarda o quita la pista actual sin cerrar la mini ventana. */
+function paintPickLike() {
+  const first = $('picklist').firstElementChild; if (!first?.dataset.like) return;
+  first.querySelector('span').textContent = liked ? 'Guardada ✓ · tocá para quitarla' : 'Tocá para guardarla';
+  first.classList.toggle('cur', liked);
+}
+/** Agrega la pista actual a una playlist y confirma en la fila. */
+async function addToPlaylist(p, li) {
+  const uri = curUri; if (!uri) return;
+  li.querySelector('span').textContent = 'Agregando…';
+  const r = await sp('/playlists/' + encodeURIComponent(p.id) + '/items', 'POST', { uris: [uri] });
+  if (!r.ok) {
+    li.querySelector('span').textContent = r.status === 403 ? 'Sin permiso para editarla (403)' : 'No se pudo agregar (' + why(r.status) + ')';
+    return status('No se pudo agregar a «' + p.name + '»');
+  }
+  li.classList.add('cur'); li.querySelector('span').textContent = 'Agregada ✓';
+  status('Agregada a «' + p.name + '»'); setTimeout(() => { status(''); togglePick(false); }, 900);
+}
+/** Muestra u oculta la mini ventana. Se cierra sola si cambia la pista. */
+async function togglePick(open = $('pick').hidden) {
+  if (open && !curUri.startsWith('spotify:track:')) open = false;
+  $('pick').hidden = !open; $('like').classList.toggle('on', open || liked);
+  if (!open) return;
+  if (!$('devs').hidden) toggleDevices(false);
+  const uri = curUri;
+  const likeRow = listRow({ name: 'Canciones que te gustan', sub: '', onclick: toggleLike }); likeRow.dataset.like = '1';
+  $('picklist').replaceChildren(likeRow, note('Cargando tus playlists…')); paintPickLike(); likeRow.focus();
+  let rows;
+  try {
+    const pls = await editablePlaylists(); if ($('pick').hidden || uri !== curUri) return;
+    rows = pls.length ? pls.map(p => { const li = listRow({ name: p.name, sub: p.collaborative ? 'Colaborativa' : 'Tuya', img: img(p.images), onclick: () => addToPlaylist(p, li) }); return li; }) : [note('No tenés playlists propias')];
+  } catch (s) {
+    if ($('pick').hidden || uri !== curUri) return;
+    rows = [note('No se pudieron cargar tus playlists (' + why(s) + ')')];
+  }
+  $('picklist').replaceChildren(likeRow, ...rows);
+}
+$('pickx').onclick = () => togglePick(false);
+
+// ---------- Colección: álbumes guardados, artistas seguidos y artistas más escuchados ----------
+let collSeq = 0;   // descarta respuestas de una vista anterior (otra pestaña o un artista distinto)
+const albumRow = a => row({ name: a.name, sub: (a.album_type === 'single' ? 'Sencillo' : 'Álbum') + ' · ' + (a.artists || []).map(x => x.name).join(', ') + (a.release_date ? ' · ' + a.release_date.slice(0, 4) : ''), uri: a.uri, img: img(a.images) });
+const artistRow = a => row({ name: a.name, sub: 'Artista', uri: a.uri, img: img(a.images), open: () => openArtist(a) });
+// Pide un recurso y devuelve su JSON, o el código de error numérico si falló.
+const getJson = async p => { try { const r = await sp(p); return r.ok ? await r.json() : r.status; } catch { return 0; } };
+/** Carga las tres secciones de la Colección en paralelo; cada una falla por separado. */
+async function loadColl() {
+  const my = ++collSeq; fill([note('Cargando…')]);
+  const [al, fo, to] = await Promise.all([getJson('/me/albums?limit=50'), getJson('/me/following?type=artist&limit=50'), getJson('/me/top/artists?limit=20&time_range=medium_term')]);
+  if (tab !== 'coll' || my !== collSeq) return;
+  const parts = [], section = (title, d, items, map, empty) => {
+    parts.push(sec(title));
+    if (typeof d === 'number') return parts.push(note('No se pudo cargar (' + why(d) + ')'));
+    const xs = items(d).filter(Boolean); parts.push(...(xs.length ? xs.map(map) : [note(empty)]));
+  };
+  section('Álbumes guardados', al, d => (d.items || []).map(x => x.album), albumRow, 'Todavía no guardaste álbumes');
+  section('Artistas que seguís', fo, d => d.artists?.items || [], artistRow, 'Todavía no seguís artistas');
+  section('Tus artistas más escuchados', to, d => d.items || [], artistRow, 'Todavía no hay datos suficientes');
+  // Si una sección falló: con una copia guardada se muestra esa (con aviso); si no, lo que sí cargó. Nunca se guarda
+  // una carga incompleta, así la próxima vez se vuelve a intentar.
+  const code = [al, fo, to].find(d => typeof d === 'number');
+  if (code !== undefined) return cache.coll ? failed('coll', 'tu colección', code) : fill(parts);
+  keep('coll', parts);
+}
+/** Vista de un artista: reproducirlo y ver sus álbumes y sencillos (sin duplicados). */
+async function openArtist(a) {
+  const my = ++collSeq, back = listRow({ name: '← Volver', sub: 'Colección', onclick: () => setTab('coll') });
+  fill([back, note('Cargando álbumes…')]);
+  const d = await getJson('/artists/' + encodeURIComponent(a.id) + '/albums?include_groups=album,single&limit=50');
+  if (tab !== 'coll' || my !== collSeq) return;
+  const seen = new Set(), albums = (typeof d === 'number' ? [] : d.items || []).filter(x => x && !seen.has(x.name.toLowerCase()) && seen.add(x.name.toLowerCase()));
+  fill([back, row({ name: 'Reproducir a ' + a.name, sub: 'Artista', uri: a.uri, img: img(a.images) }), sec('Álbumes y sencillos'),
+    ...(typeof d === 'number' ? [note('No se pudieron cargar los álbumes (' + why(d) + ')')] : albums.length ? albums.map(albumRow) : [note('Sin álbumes')])]);
+}
+// Pestañas de la vista de biblioteca: Buscar · Me gusta · Top · Colección · Cola · Reciente. Cada carga descarta su resultado
 // si el usuario cambió de pestaña mientras esperaba.
 let tab = 'search';
 const trackRow = (t, list) => row({ name: t.name, sub: t.artists.map(a => a.name).join(', '), uri: t.uri, ctx: t.album?.uri, img: img(t.album?.images), list });
@@ -629,53 +785,58 @@ async function loadLiked() {
   let url = '/me/tracks?limit=50', out = [];
   for (let i = 0; i < 2 && url; i++) {
     const r = await sp(url); if (tab !== 'liked') return;
-    if (!r.ok) return fill([note('No se pudieron cargar tus Me gusta (' + r.status + ')')]);
+    if (!r.ok) return failed('liked', 'tus Me gusta', r.status);
     const d = await r.json(); out.push(...d.items.map(x => x.track).filter(t => t?.uri));
     url = d.next ? d.next.replace('https://api.spotify.com/v1', '') : null;
   }
   const uris = out.map(t => t.uri);
-  fill(out.length ? [sec('Canciones que te gustan'), ...out.map(t => trackRow(t, uris))] : [note('Todavía no guardaste canciones')]);
+  keep('liked', out.length ? [sec('Canciones que te gustan'), ...out.map(t => trackRow(t, uris))] : [note('Todavía no guardaste canciones')]);
 }
 // Período del Top: short_term (4 semanas), medium_term (6 meses) o long_term (un año).
 let topRange = 'medium_term';
 /** Canciones más escuchadas del usuario en el período elegido (hasta 30). */
 async function loadTop() {
   fill([note('Cargando…')]);
-  const r = await sp('/me/top/tracks?limit=30&time_range=' + topRange); if (tab !== 'top') return;
-  if (!r.ok) return fill([note('No se pudieron cargar tus más escuchados (' + r.status + ')')]);
+  const key = 'top:' + topRange;   // cada período tiene su propia copia guardada
+  const r = await sp('/me/top/tracks?limit=30&time_range=' + topRange); if (tab !== 'top' || key !== 'top:' + topRange) return;
+  if (!r.ok) return failed(key, 'tus más escuchados', r.status);
   const items = ((await r.json()).items || []).filter(t => t?.uri), uris = items.map(t => t.uri);
-  fill(items.length ? [sec('Tus más escuchados'), ...items.map(t => trackRow(t, uris))] : [note('Todavía no hay datos suficientes')]);
+  keep(key, items.length ? [sec('Tus más escuchados'), ...items.map(t => trackRow(t, uris))] : [note('Todavía no hay datos suficientes')]);
 }
 for (const b of document.querySelectorAll('#ranges button')) b.onclick = () => {
-  topRange = b.dataset.r; for (const x of document.querySelectorAll('#ranges button')) x.classList.toggle('on', x === b); loadTop();
+  topRange = b.dataset.r; for (const x of document.querySelectorAll('#ranges button')) x.classList.toggle('on', x === b); setTab('top');
 };
 /** Cola de reproducción: pista actual y las siguientes (solo lectura). */
 async function loadQueue() {
   fill([note('Cargando…')]);
   const r = await sp('/me/player/queue'); if (tab !== 'queue') return;
-  if (!r.ok) return fill([note('No se pudo cargar la cola (' + r.status + ')')]);
+  if (!r.ok) return failed('queue', 'la cola', r.status);
   const d = await r.json(), cur = d.currently_playing, parts = [];
   const map = t => ({ name: t.name, sub: (t.artists || []).map(x => x.name).join(', '), img: img(t.album?.images), plain: true });
   if (cur) parts.push(sec('Sonando ahora'), row(map(cur)));
   const next = (d.queue || []).filter(t => t?.name);
   parts.push(sec('A continuación'), ...(next.length ? next.map(t => row(map(t))) : [note('La cola está vacía')]));
-  fill(parts);
+  keep('queue', parts);
 }
 /** Últimas 30 reproducciones, sin repeticiones consecutivas. */
 async function loadHistory() {
   fill([note('Cargando…')]);
   const r = await sp('/me/player/recently-played?limit=30'); if (tab !== 'history') return;
-  if (!r.ok) return fill([note('No se pudo cargar el historial (' + r.status + ')')]);
+  if (!r.ok) return failed('history', 'el historial', r.status);
   const items = (await r.json()).items || [], seen = [];
   for (const it of items) { const t = it.track; if (t && seen[seen.length - 1]?.uri !== t.uri) seen.push(t); }   // quita repeticiones consecutivas
-  fill(seen.length ? [sec('Escuchado recientemente'), ...seen.map(t => row({ name: t.name, sub: t.artists.map(a => a.name).join(', '), uri: t.uri, ctx: t.album?.uri, img: img(t.album?.images) }))] : [note('Todavía no hay historial')]);
+  keep('history', seen.length ? [sec('Escuchado recientemente'), ...seen.map(t => row({ name: t.name, sub: t.artists.map(a => a.name).join(', '), uri: t.uri, ctx: t.album?.uri, img: img(t.album?.images) }))] : [note('Todavía no hay historial')]);
 }
 /** Cambia de pestaña en la biblioteca y carga su contenido. */
 function setTab(t) {
-  tab = t; for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.t === t);
+  quiet = false; tab = t; for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.t === t);
   $('q').hidden = t !== 'search'; $('ranges').hidden = t !== 'top';
-  if (t === 'search') { $('q').focus(); $('q').value.trim() ? search($('q').value.trim()) : loadPlaylists(); }
-  else if (t === 'liked') loadLiked(); else if (t === 'top') loadTop(); else if (t === 'queue') loadQueue(); else loadHistory();
+  if (t === 'search') $('q').focus();
+  // La cola cambia con cada pista: siempre se pide. Las demás se reutilizan mientras la copia guardada sea reciente.
+  const key = t === 'liked' ? 'liked' : t === 'top' ? 'top:' + topRange : t === 'coll' ? 'coll' : t === 'history' ? 'history' : t === 'search' && !$('q').value.trim() ? 'playlists' : null;
+  const c = key && cache[key]; if (c && Date.now() - c.t < ttl(key)) return fill(c.parts);
+  if (t === 'search') $('q').value.trim() ? search($('q').value.trim()) : loadPlaylists();
+  else if (t === 'liked') loadLiked(); else if (t === 'top') loadTop(); else if (t === 'coll') loadColl(); else if (t === 'queue') loadQueue(); else loadHistory();
 }
 for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => setTab(b.dataset.t);
 let timer;
@@ -687,12 +848,18 @@ $('q').onkeydown = async e => {
 /** Muestra u oculta la vista de biblioteca (reemplaza a la vista del reproductor mientras está abierta). */
 function toggleLib(open = $('library').hidden) {
   $('library').hidden = !open; $('now').hidden = open; $('player').classList.toggle('lib', open); $('libbtn').classList.toggle('on', open);
-  if (open) { $('q').value = ''; setTab('search'); }
+  if (open) { $('q').value = ''; setTab('search'); } else syncRemote();   // al volver al reproductor se refresca el estado
 }
 $('libbtn').onclick = () => toggleLib();
+// Con la biblioteca abierta, las pestañas que cambian con el uso se refrescan cada minuto (sin parpadeo ni saltos).
+const REFRESH = { liked: loadLiked, queue: loadQueue, history: loadHistory };
+setInterval(async () => {
+  if ($('library').hidden || document.hidden || !REFRESH[tab]) return;
+  quiet = true; try { await REFRESH[tab](); } finally { quiet = false; }
+}, 60000);
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if (!$('devs').hidden) toggleDevices(false); else if (!$('library').hidden) toggleLib(false);
+  if (!$('pick').hidden) togglePick(false); else if (!$('devs').hidden) toggleDevices(false); else if (!$('library').hidden) toggleLib(false);
 });
 
 // ---------- Aviso de actualización ----------
@@ -710,7 +877,7 @@ async function toggleDevices(open = $('devs').hidden) {
   $('devs').hidden = !open; $('dev').classList.toggle('on', open); if (!open) return;
   $('devs').replaceChildren(note('Buscando dispositivos…'));
   const r = await sp('/me/player/devices'); if ($('devs').hidden) return;
-  if (!r.ok) return $('devs').replaceChildren(note('No se pudieron cargar los dispositivos (' + r.status + ')'));
+  if (!r.ok) return $('devs').replaceChildren(note('No se pudieron cargar los dispositivos (' + why(r.status) + ')'));
   const ds = ((await r.json()).devices || []).filter(d => d.id);
   $('devs').replaceChildren(...(ds.length ? ds.map(d => {
     const li = document.createElement('li'); li.className = 'it' + (d.is_active ? ' cur' : ''); li.tabIndex = 0; li.setAttribute('role', 'button');

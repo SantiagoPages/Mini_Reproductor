@@ -1,6 +1,6 @@
 # Mini Player
 
-Reproductor de escritorio minimalista para Spotify (Windows). Una ventana pequeña y movible que reproduce
+Reproductor de escritorio minimalista para Spotify (Windows y Ubuntu). Una ventana pequeña y movible que reproduce
 audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
 
 ## Características
@@ -8,24 +8,25 @@ audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
 - Portada, título, artista y barra de progreso con salto por clic o arrastre.
 - Fondo que toma el color dominante de la portada de cada canción.
 - Anterior, play/pausa, siguiente, aleatorio, repetir, volumen (con botón de silencio) y botón de Me gusta.
-- Biblioteca (tus playlists) y buscador de canciones, álbumes, artistas y playlists.
-- Pestañas de **Me gusta**, **Top** (tus canciones más escuchadas), **Cola** e **Historial**.
+- Biblioteca (tus playlists) y buscador de canciones, álbumes, artistas y playlists (hasta 10 resultados por tipo).
+- Pestañas de **Me gusta**, **Top** (tus canciones más escuchadas), **Colección** (álbumes guardados, artistas que seguís y tus artistas más escuchados; al tocar un artista ves sus álbumes), **Cola** y **Reciente**.
+- Botón **+** junto al título: abre una mini ventana para guardar la canción en Me gusta o en cualquiera de tus playlists editables.
 - Botón **+** en los resultados para agregar canciones a la cola.
 - Selector de **dispositivo** de reproducción.
 - Atajos de teclado: Espacio (pausa), ← → (anterior/siguiente), ↑ ↓ (volumen), M (silencio) y L (Me gusta).
 - Recuerda la posición y el monitor de la ventana; si el monitor ya no está, vuelve al principal. Ctrl+Alt+C la centra en el monitor donde esté el mouse (útil si queda en un lugar inalcanzable).
-- Preparado para Ubuntu: usa X11/XWayland, deja las teclas multimedia al sistema y avisa si falta el llavero (próximamente empaquetado .AppImage/.deb).
+- Ubuntu: paquetes `.deb` y `.AppImage`; usa X11/XWayland, deja las teclas multimedia al sistema y avisa si falta el llavero.
 - Aviso opcional al cambiar de canción, en una ventanita abajo a la derecha, cuando el reproductor está en segundo plano.
 - Personalización: temas, tamaño y forma de la ventana, 5 tipografías, 5 estilos de botones
   (incluida una rueda estilo iPod), forma de la portada y alto automático.
 - Se puede ocultar cualquier elemento (portada, artista, Me gusta, aleatorio, repetir, tiempo, volumen, dispositivos).
 - Aviso de nueva versión (opcional): consulta GitHub al iniciar; no instala nada, solo abre la página de la release.
 - Ícono en la bandeja, modo "siempre encima" y teclas multimedia globales.
-- Sesión persistente, guardada cifrada con el almacén de credenciales de Windows.
+- Sesión persistente, guardada cifrada con el almacén de credenciales del sistema (Windows) o el llavero (Ubuntu).
 
 ## Requisitos
 
-- Windows 10 u 11.
+- Windows 10 u 11, o Ubuntu 22.04 o superior (con llavero, `gnome-keyring`, que viene con el escritorio de Ubuntu).
 - Una cuenta de **Spotify Premium** (el reproductor integrado no funciona con cuentas gratuitas).
 - **Tu propio Client ID** de Spotify: la aplicación no incluye ninguno. Seguí las instrucciones de
   [`INSTRUCCIONES.txt`](INSTRUCCIONES.txt) (unos 3 minutos); la app también las muestra en la primera ejecución.
@@ -35,6 +36,16 @@ audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
 Descargá el instalador o la versión portable desde la sección **Releases** del repositorio. Windows puede
 mostrar un aviso de "editor desconocido" (SmartScreen) porque el ejecutable no tiene certificado de firma de
 código: elegí *Más información → Ejecutar de todos modos*.
+
+### En Ubuntu
+
+- **`.deb` (recomendado):** `sudo apt install ./mini-player-X.Y.Z-linux-amd64.deb`. Instala el ícono en el menú de aplicaciones.
+- **`.AppImage`:** `chmod +x mini-player-X.Y.Z-linux-x86_64.AppImage` y ejecutarlo. En Ubuntu 24.04 el sistema puede
+  bloquear el sandbox de Chromium en los AppImage; si no abre, ejecutarlo con `--no-sandbox` o usar el `.deb`.
+- En el primer inicio en Ubuntu la app descarga el componente de Widevine (necesita internet y puede tardar unos segundos).
+- Si el llavero no está disponible o está bloqueado, la app funciona pero no recuerda la sesión entre aperturas.
+- La app fuerza X11 (XWayland). En una sesión Wayland, el atajo global Ctrl+Alt+C solo responde con una ventana de la
+  app activa; en la sesión "Ubuntu en Xorg" funciona siempre.
 
 ## Compilar desde el código
 
@@ -50,7 +61,11 @@ python -m castlabs_evs.vmp sign-pkg node_modules\electron\dist
 npm start
 ```
 
-Para generar el instalador y la versión portable: `construir.bat` (resultado en `dist/`).
+Para generar el instalador y la versión portable de Windows: `construir.bat` (resultado en `dist/`).
+Para generar el `.deb` y el `.AppImage` en Ubuntu: `bash construir.sh` (requiere Node.js; no necesita la firma de EVS,
+que Widevine solo exige en Windows y macOS).
+También se pueden generar sin tener Ubuntu: el flujo de GitHub Actions (`.github/workflows/linux.yml`) los construye en
+un servidor de GitHub, a mano desde la pestaña *Actions* o automáticamente al publicar una release.
 
 ## Arquitectura y seguridad
 
@@ -71,7 +86,7 @@ Para generar el instalador y la versión portable: `construir.bat` (resultado en
 - Spotify exige Premium y que cada persona use su propia app de desarrollador (modo desarrollo: hasta 5 usuarios por app).
 - La firma de EVS puede vencer: de vez en cuando hace falta recompilar y volver a publicar el ejecutable.
 - No es un producto oficial de Spotify.
-- Las pestañas Top e Historial dependen de los datos que Spotify devuelva para tu cuenta.
+- Las pestañas Top, Colección y Reciente dependen de los datos que Spotify devuelva para tu cuenta.
 
 ## Aviso legal
 
@@ -80,7 +95,7 @@ Spotify AB. El uso de la API está sujeto a los términos para desarrolladores d
 
 ## English summary
 
-Minimal Windows desktop player for Spotify that plays audio on its own through the Web Playback SDK (Premium
+Minimal Windows and Ubuntu desktop player for Spotify that plays audio on its own through the Web Playback SDK (Premium
 required). Built with Electron (castLabs build with Widevine; EVS signing required). Every user supplies their own
 Spotify Client ID: none is bundled. OAuth 2.0 PKCE, encrypted session storage, sandboxed UI with a strict CSP.
 See "Compilar desde el código" for build steps.
