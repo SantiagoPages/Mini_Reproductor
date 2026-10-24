@@ -16,6 +16,7 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 rl.question('Código para este tema (usá una frase larga): ', async code => {
   rl.close();
   if (code.trim().length < 8) { console.error('Muy corto: usá al menos 8 caracteres (mejor una frase).'); process.exit(1); }
+  if (!/\s/.test(code.trim())) console.warn('Aviso: un código de una sola palabra es fácil de adivinar. Mejor una frase larga y rara.');
   const out = path.join(__dirname, '..', 'secretos'); fs.mkdirSync(out, { recursive: true });
   const file = path.join(out, crypto.randomBytes(6).toString('hex') + '.bin');   // nombre al azar: no revela el tema
   fs.writeFileSync(file, await seal(pack, code));

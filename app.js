@@ -135,16 +135,19 @@ async function render() {
     lastCover = url; const data = await bridge.cover(url); if (url !== lastCover) return;   // descarta respuestas obsoletas
     if (data) {
       coverData = cover = data; $('cover').style.backgroundImage = `url(${data})`;
-      const img = new Image(); img.onload = () => { if (url === lastCover) tint(img); }; img.src = data;
+      // Se espera a que el color de la portada nueva esté aplicado: el aviso debe salir con el color de esta canción, no de la anterior.
+      await new Promise(done => { const img = new Image(); img.onload = () => { if (url === lastCover) tint(img); done(); }; img.onerror = done; img.src = data; });
+      if (url !== lastCover) return;
     } else cover = '';
   }
   if (changed) announce(t, url ? cover : '');
 }
 /** Envía los datos de la pista nueva a la ventanita de aviso, si la opción está activa y esta ventana no tiene el foco. */
-function announce(t, cover) {
-  if (!cfg.trackNotice || document.hasFocus()) return;
-  const cs = getComputedStyle(document.documentElement), m = cs.getPropertyValue('--bg').match(/#[0-9a-f]{6}|hsl\(\d+ \d+% \d+%\)/i);   // color sólido del fondo actual
-  bridge.announce?.({ title: t.name, artist: t.artists.map(a => a.name).join(', '), cover, bg: m ? m[0] : '#2a2060', fg: cs.getPropertyValue('--fg').trim() });
+function announce(t, cover, preview = false) {
+  if (!cfg.trackNotice || (!preview && document.hasFocus())) return;
+  // El aviso toma del tema actual el fondo (sólido o degradado), el texto y el color de acento; main valida cada uno.
+  const cs = getComputedStyle(document.documentElement), v = k => cs.getPropertyValue(k).trim();
+  bridge.announce?.({ title: t.name, artist: t.artists.map(a => a.name).join(', '), cover, bg: v('--bg'), fg: v('--fg'), accent: v('--accent'), preview });
 }
 // Progreso: el SDK emite estado solo ante eventos, por lo que la posición se interpola localmente cada 200 ms.
 let dragging = false;
@@ -241,16 +244,17 @@ function paint() {
   set('--radius', (cfg.radius ?? 28) + 'px'); set('--bgo', cfg.bgOpacity ?? 1);
   const blur = cfg.bgMode === 'blur' && coverData;
   $('bgimg').hidden = !blur; if (blur) $('bgimg').style.backgroundImage = `url(${coverData})`;
-  // Las flores son parte del tema Cherry: en cualquier otro tema (o personalizado) no se muestran.
-  $('bloom').hidden = !(cfg.blossoms && cfg.preset === 'cherry');
+  // Las flores son parte de los temas Cherry y Sakura: en cualquier otro tema (o personalizado) no se muestran.
+  $('bloom').hidden = !(cfg.blossoms && (cfg.preset === 'cherry' || cfg.preset === 'sakura'));
+  $('bloom').classList.toggle('s', cfg.preset === 'sakura');
 }
 // Pétalos: se crean una vez con valores aleatorios (CSSOM, compatible con la CSP) y se animan por CSS.
 // El retraso negativo reparte los pétalos a lo largo de la caída desde el primer fotograma. Se pausan con la
 // ventana oculta.
 (() => {
   const r = (a, b) => a + Math.random() * (b - a);
-  for (let i = 0; i < 16; i++) {
-    const p = document.createElement('i'); p.className = i % 3 ? 'pa' : 'pb';
+  for (let i = 0; i < 24; i++) {
+    const p = document.createElement('i'); p.className = (i % 3 ? 'pa' : 'pb') + (i >= 16 ? ' ex' : '');   // los 8 últimos solo se ven en Sakura
     p.style.setProperty('--x', r(0, 100).toFixed(1) + '%');
     p.style.setProperty('--s', r(7, 13).toFixed(1) + 'px');
     p.style.setProperty('--d', r(9, 16).toFixed(1) + 's');
@@ -303,6 +307,7 @@ function applyPack() {
   $('secret').hidden = !pack; if ((pack?.id || null) === builtId) return;
   builtId = pack?.id || null; $('secret').replaceChildren(); prepSound();
   $('player').style.setProperty('--padb', (pack?.pad || 20) + 'px');   // margen inferior propio del tema
+  lastH = 0; requestAnimationFrame(() => reportSize());   // vuelve a informar el alto: la ventana debe crecer con el margen
   if (!pack) return;
   if (pack.image) {   // imagen de fondo, con una capa oscura opcional para que el texto siga legible
     const bg = document.createElement('div'); bg.className = 'bgart', dim = pack.imageDim || 0;
@@ -311,6 +316,9 @@ function applyPack() {
   for (const d of pack.decor || []) {
     const s = safeSvg(d.svg); if (!s) continue;
     const w = document.createElement('div'); w.className = 'dec ' + d.at; w.append(s); $('secret').append(w);
+  }
+  if (pack.art) {   // imagen apoyada abajo, por encima de la decoración y por debajo de lo que cae
+    const im = document.createElement('img'); im.className = 'art'; im.alt = ''; im.src = pack.art; im.style.width = (pack.artW || 70) + '%'; $('secret').append(im);
   }
   const r = (x, y) => x + Math.random() * (y - x);
   for (let i = 0; i < (pack.fall?.count || 0); i++) {
@@ -348,7 +356,12 @@ document.addEventListener('click', e => {
 bridge.secretList?.().then(p => { packs = p; builtId = undefined; applyPack(); });
 bridge.onSecrets?.(p => { packs = p; builtId = undefined; applyPack(); });
 // Punto único de entrada para los ajustes: actualiza el estado y repinta todo lo que depende de ellos.
-const applyCfg = s => { cfg = s; setRainbow(s.bgMode === 'rainbow'); applyLook(); applyPack(); paint(); };
+const applyCfg = s => {
+  const noticeOn = cfg.trackNotice === false && s.trackNotice;   // la opción se acaba de activar (no al cargar)
+  cfg = s; setRainbow(s.bgMode === 'rainbow'); applyLook(); applyPack(); paint();
+  // Vista previa: un aviso de ejemplo con los colores del tema, para comprobar que funciona.
+  if (noticeOn) announce({ name: 'Aviso de canción nueva', artists: [{ name: 'Así se verá, abajo a la derecha' }] }, '', true);
+};
 // Alto de diseño: la ventana se ajusta a lo que hay visible. Se informa al proceso principal (que redimensiona).
 // ResizeObserver mide el diseño sin escala, por lo que no depende de --z.
 let lastH = 0, rq = 0;

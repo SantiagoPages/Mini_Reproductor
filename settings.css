@@ -1,29 +1,56 @@
-:root{color-scheme:dark}
+:root{color-scheme:dark;--a:#b9a8ff;--bg:#15121c;--card:#1f1b2b;--line:#2d2740;--chip:#2a2439;--chip2:#352d48}
 *{box-sizing:border-box;margin:0}
 [hidden]{display:none!important}
-body{padding:20px;background:#17141f;color:#f3efe6;font:14px Inter,"Segoe UI",sans-serif}
-h1{font-size:20px;font-weight:650}
-h2{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;opacity:.65;margin-bottom:8px}
-.hint{font-size:12px;opacity:.65;margin:4px 0 18px}
-section{margin-bottom:20px;display:flex;flex-direction:column;gap:10px}
+body{padding:0 16px 16px;background:var(--bg);color:#f3efe6;font:14px Inter,"Segoe UI",sans-serif}
+/* Cabecera fija con las pestañas */
+header{position:sticky;top:0;z-index:2;padding:16px 0 10px;background:var(--bg)}
+h1{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.hint{font-size:12px;opacity:.65;margin:4px 0 0;line-height:1.5}
+#nav{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:12px;padding:4px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+#nav button{padding:8px 4px;border:0;border-radius:9px;background:none;color:inherit;font:inherit;font-size:13px;font-weight:550;opacity:.7;cursor:pointer;transition:background .15s,opacity .15s}
+#nav button:hover{opacity:1}
+#nav button.on{background:var(--a);color:#1a1530;opacity:1}
+/* Tarjetas: solo se ve la pestaña activa */
+main{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+section{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;background:var(--card);border:1px solid var(--line)}
+main section[data-tab]{display:none}
+body[data-tab=look] section[data-tab=look],body[data-tab=win] section[data-tab=win],body[data-tab=sys] section[data-tab=sys]{display:flex}
+h2{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650;letter-spacing:.02em;margin-bottom:2px}
+h2 svg{width:18px;height:18px;fill:var(--a);flex:none}
+/* Temas */
 #themes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-#themes button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border:2px solid transparent;border-radius:12px;background:#241f33;color:inherit;font:inherit;font-size:12px;cursor:pointer}
-#themes button:hover{background:#2e2842}
-#themes button.on{border-color:#b9a8ff}
-.sw{width:100%;height:34px;border-radius:8px;border:1px solid rgba(255,255,255,.15)}
-select,button#reset,button#secretGo,input[type=text]{width:100%;padding:9px 10px;border:0;border-radius:8px;background:#241f33;color:inherit;font:inherit}
-label{display:flex;justify-content:space-between;align-items:center}
-input[type=color]{width:56px;height:30px;padding:0;border:0;border-radius:6px;background:none;cursor:pointer}
-input[type=checkbox]{width:20px;height:20px;accent-color:#b9a8ff;cursor:pointer}
-#sizes{grid-template-columns:repeat(4,1fr)}
+#themes button{display:flex;flex-direction:column;align-items:center;gap:7px;padding:8px 6px 9px;border:2px solid transparent;border-radius:14px;background:var(--chip);color:inherit;font:inherit;font-size:12px;cursor:pointer;transition:transform .12s,background .15s,border-color .15s}
+#themes button:hover{background:var(--chip2);transform:translateY(-1px)}
+#themes button.on{border-color:var(--a);background:var(--chip2);box-shadow:0 0 0 3px rgba(185,168,255,.18)}
+.sw{width:100%;height:44px;border-radius:9px;border:1px solid rgba(255,255,255,.14)}
+/* Controles */
+select,button#reset,button#secretGo,input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--chip);color:inherit;font:inherit}
+select{cursor:pointer}select:hover{background:var(--chip2)}
+label{display:flex;justify-content:space-between;align-items:center;gap:12px}
+input[type=color]{width:56px;height:30px;padding:0;border:2px solid var(--line);border-radius:8px;background:none;cursor:pointer}
+/* Interruptores */
+input[type=checkbox]{appearance:none;flex:none;position:relative;width:40px;height:22px;margin:0;border-radius:11px;background:#4a4262;cursor:pointer;transition:background .18s}
+input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .18s}
+input[type=checkbox]:checked{background:var(--a)}
+input[type=checkbox]:checked::after{transform:translateX(18px);background:#1a1530}
+.rows label{padding:9px 0;border-bottom:1px solid var(--line)}
+.rows label:first-child{padding-top:2px}.rows label:last-child{border-bottom:0}
+/* Segmentos y deslizadores */
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
-.seg button{padding:8px 4px;border:2px solid transparent;border-radius:10px;background:#241f33;color:inherit;font:inherit;font-size:12px;cursor:pointer}
-#sizes{grid-auto-flow:row}
-.seg button:hover{background:#2e2842}
-.seg button.on{border-color:#b9a8ff}
+#sizes{grid-auto-flow:row;grid-template-columns:repeat(4,1fr)}
+.seg button{padding:9px 4px;border:2px solid transparent;border-radius:10px;background:var(--chip);color:inherit;font:inherit;font-size:12px;cursor:pointer;transition:background .15s,border-color .15s}
+.seg button:hover{background:var(--chip2)}
+.seg button.on{border-color:var(--a);background:var(--chip2)}
 .rng{display:grid;grid-template-columns:1fr auto;gap:6px 10px}
 .rng output{font-size:12px;opacity:.7}
-.rng input{grid-column:1/-1;width:100%;accent-color:#b9a8ff;cursor:pointer}
-button#reset,button#secretGo{cursor:pointer;margin-top:4px}
-button#reset:hover,button#secretGo:hover{background:#2e2842}
-select:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid #b9a8ff;outline-offset:2px}
+.rng input{grid-column:1/-1;width:100%;accent-color:var(--a);cursor:pointer}
+/* Atajos */
+.keys{list-style:none;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;font-size:12px}
+kbd{display:inline-block;min-width:22px;padding:2px 6px;border-radius:6px;border:1px solid var(--line);border-bottom-width:2px;background:var(--chip);font:11px/1.4 Inter,"Segoe UI",sans-serif;text-align:center}
+/* Pie */
+footer{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+button#reset,button#secretGo{cursor:pointer}
+button#reset{background:none;opacity:.8}
+button#reset:hover,button#secretGo:hover{background:var(--chip2);opacity:1}
+select:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}

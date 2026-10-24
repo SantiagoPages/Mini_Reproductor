@@ -50,7 +50,8 @@ CÓMO ELEGIR MÚSICA
 - Botón "+" junto al título de la canción que suena: abre una ventanita para
     guardarla en Me gusta o en una de tus playlists.
 - Botón de la pantalla: elegís en qué dispositivo suena la música.
-- Botón de los ajustes: temas, tipografía, estilo de botones y qué se muestra.
+- Botón de los ajustes: tres pestañas. Apariencia (temas, fondo, acento, tipografía),
+    Ventana (tamaño, qué se muestra, botones) y Sistema (avisos, iniciar con el sistema, atajos).
 - También podés copiar un link de Spotify (Compartir > Copiar enlace) y pegarlo
   con Ctrl+V en la ventana del reproductor.
 

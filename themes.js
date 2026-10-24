@@ -6,5 +6,6 @@ const THEMES = {
   light:   { label: 'Claro', bgMode: 'fixed', bgColor: '#f2efe9', accentMode: 'custom', accentColor: '#3b2d8f', swatch: '#f2efe9' },
   neon:    { label: 'Neón', bgMode: 'fixed', bgColor: '#0b0b1a', accentMode: 'custom', accentColor: '#00e5ff', swatch: 'linear-gradient(135deg,#0b0b1a,#00e5ff)' },
   cherry:  { label: 'Cherry', bgMode: 'fixed', bgColor: '#f7c6d5', accentMode: 'custom', accentColor: '#b3265a', blossoms: true, swatch: 'linear-gradient(135deg,#ffe0ea,#f7a8c0)' },
+  sakura:  { label: 'Sakura', bgMode: 'fixed', bgColor: '#f3a6b1', accentMode: 'custom', accentColor: '#a3122f', blossoms: true, swatch: 'linear-gradient(135deg,#ffd1d9,#e8566f)' },
   rainbow: { label: 'Arcoíris', bgMode: 'rainbow', bgColor: '#2a2060', accentMode: 'auto', accentColor: '#ffffff', swatch: 'linear-gradient(135deg,#e53935,#fdd835,#43a047,#1e88e5,#8e24aa)' }
 };

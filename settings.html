@@ -1,13 +1,22 @@
 <!doctype html>
-<!-- Ventana de ajustes. Los botones de temas y de opciones se generan desde settings.js; los estilos, en settings.css. -->
+<!-- Ventana de ajustes. Tres pestañas (data-tab) con tarjetas por sección; los botones de temas y de opciones se generan desde settings.js; los estilos, en settings.css. -->
 <html lang="es"><head><meta charset="utf-8"><title>Ajustes</title>
-<link rel="stylesheet" href="/settings.css"></head><body>
-<h1>Apariencia</h1>
-<p class="hint">Los cambios se ven al instante en el reproductor y se guardan en esta PC.</p>
-<!-- Temas prediseñados (y los secretos desbloqueados) -->
-<section><h2>Temas</h2><div id="themes"></div></section>
-<!-- Fondo: modo y color fijo -->
-<section><h2>Fondo</h2>
+<link rel="stylesheet" href="/settings.css"></head><body data-tab="look">
+<header>
+ <h1>Ajustes</h1>
+ <p class="hint">Los cambios se ven al instante en el reproductor y se guardan en esta PC.</p>
+ <nav id="nav" role="tablist">
+  <button type="button" role="tab" data-t="look" class="on">Apariencia</button>
+  <button type="button" role="tab" data-t="win">Ventana</button>
+  <button type="button" role="tab" data-t="sys">Sistema</button>
+ </nav>
+</header>
+<main>
+<!-- Apariencia -->
+<section data-tab="look"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 0 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.3c2.1 0 3.7-1.6 3.7-3.7C21 6.5 17 3 12 3zm-5.5 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>Temas</h2><div id="themes"></div></section>
+<!-- Solo visible cuando el tema activo trae sonidos -->
+<section data-tab="look" id="sfxRow" hidden><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>Sonidos</h2><label>Sonidos del tema <input type="checkbox" id="sfx"></label></section>
+<section data-tab="look"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>Fondo</h2>
  <select id="bgMode" aria-label="Modo de fondo">
   <option value="dynamic">Dinámico (color de la portada)</option>
   <option value="fixed">Color fijo</option>
@@ -17,23 +26,19 @@
  </select>
  <label id="bgColorRow">Color del fondo <input type="color" id="bgColor"></label>
 </section>
-<!-- Tamaño de la ventana, esquinas y transparencia del fondo -->
-<section><h2>Tamaño y forma</h2>
- <div id="sizes" class="seg">
-  <button type="button" data-s="0.8">Chico</button><button type="button" data-s="1">Normal</button>
-  <button type="button" data-s="1.25">Grande</button><button type="button" data-s="1.5">Enorme</button>
- </div>
- <label class="rng"><span>Tamaño</span><output id="scaleV"></output><input type="range" id="scale" min="70" max="160" step="5" aria-label="Tamaño"></label>
- <label class="rng"><span>Esquinas</span><output id="radiusV"></output><input type="range" id="radius" min="0" max="40" step="1" aria-label="Esquinas"></label>
- <label class="rng"><span>Transparencia del fondo</span><output id="bgOpacityV"></output><input type="range" id="bgOpacity" min="0" max="75" step="5" aria-label="Transparencia del fondo"></label>
+<section data-tab="look"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z"/></svg>Acento</h2>
+ <select id="accentMode" aria-label="Color de acento">
+  <option value="white">Blanco</option>
+  <option value="custom">Color elegido</option>
+  <option value="auto">Tono de la portada</option>
+ </select>
+ <label id="accentColorRow">Color de acento <input type="color" id="accentColor"></label>
 </section>
-<!-- Interruptores para ocultar elementos y forma de la portada (se generan en settings.js) -->
-<section><h2>Qué se muestra</h2>
- <div id="shows"></div>
- <div id="coverShape" class="seg"></div>
+<!-- Solo visible con los temas Cherry y Sakura -->
+<section data-tab="look" id="decor" hidden><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>Decoración</h2>
+ <label>Flores y pétalos <input type="checkbox" id="blossoms"></label>
 </section>
-<!-- Tipografía: los valores coinciden con data-font en style.css -->
-<section><h2>Tipografía</h2>
+<section data-tab="look"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 4v3h5v12h3V7h5V4h-13zm19 5h-9v3h3v7h3v-7h3V9z"/></svg>Tipografía</h2>
  <select id="font" aria-label="Tipografía">
   <option value="inter">Inter (la actual)</option>
   <option value="nunito">Redondeada (Nunito)</option>
@@ -42,8 +47,22 @@
   <option value="dyslexic">Amigable con la dislexia (Atkinson Hyperlegible)</option>
  </select>
 </section>
-<!-- Estilo de botones: los valores coinciden con data-btn en style.css -->
-<section><h2>Botones</h2>
+
+<!-- Ventana -->
+<section data-tab="win"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z"/></svg>Tamaño y forma</h2>
+ <div id="sizes" class="seg">
+  <button type="button" data-s="0.8">Chico</button><button type="button" data-s="1">Normal</button>
+  <button type="button" data-s="1.25">Grande</button><button type="button" data-s="1.5">Enorme</button>
+ </div>
+ <label class="rng"><span>Tamaño</span><output id="scaleV"></output><input type="range" id="scale" min="70" max="160" step="5" aria-label="Tamaño"></label>
+ <label class="rng"><span>Esquinas</span><output id="radiusV"></output><input type="range" id="radius" min="0" max="40" step="1" aria-label="Esquinas"></label>
+ <label class="rng"><span>Transparencia del fondo</span><output id="bgOpacityV"></output><input type="range" id="bgOpacity" min="0" max="75" step="5" aria-label="Transparencia del fondo"></label>
+</section>
+<section data-tab="win"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>Qué se muestra</h2>
+ <div id="shows" class="rows"></div>
+ <div id="coverShape" class="seg"></div>
+</section>
+<section data-tab="win"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 14a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/></svg>Botones</h2>
  <select id="btnStyle" aria-label="Estilo de botones">
   <option value="raised">Relieve físico (el actual)</option>
   <option value="flat">Planos</option>
@@ -52,33 +71,25 @@
   <option value="wheel">Rueda estilo MP4 (MENU abre estos Ajustes)</option>
  </select>
 </section>
-<!-- Color de acento -->
-<section><h2>Acento</h2>
- <select id="accentMode" aria-label="Color de acento">
-  <option value="white">Blanco</option>
-  <option value="custom">Color elegido</option>
-  <option value="auto">Tono de la portada</option>
- </select>
- <label id="accentColorRow">Color de acento <input type="color" id="accentColor"></label>
+
+<!-- Sistema -->
+<section data-tab="sys"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>Avisos y sistema</h2><div id="misc" class="rows"></div></section>
+<section data-tab="sys"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/></svg>Atajos de teclado</h2>
+ <p class="hint">Con la ventana del reproductor activa:</p>
+ <ul class="keys">
+  <li><kbd>Espacio</kbd> pausa</li><li><kbd>←</kbd> <kbd>→</kbd> anterior / siguiente</li>
+  <li><kbd>↑</kbd> <kbd>↓</kbd> volumen</li><li><kbd>M</kbd> silencio</li><li><kbd>L</kbd> Me gusta</li>
+ </ul>
+ <p class="hint">En cualquier momento: <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>C</kbd> centra la ventana en el monitor donde esté el mouse.</p>
 </section>
-<!-- Solo visible con el tema Cherry -->
-<section id="decor" hidden><h2>Decoración</h2>
- <label>Flores de cerezo <input type="checkbox" id="blossoms"></label>
-</section>
-<!-- Avisos opcionales: versión nueva y canción nueva (se generan en settings.js) -->
-<section><h2>Avisos</h2><div id="misc"></div></section>
-<!-- Atajos de teclado (solo informativo; se definen en app.js) -->
-<section><h2>Atajos de teclado</h2>
- <p class="hint">Con la ventana del reproductor activa:<br>Espacio: pausa · ← →: anterior / siguiente · ↑ ↓: volumen · M: silencio · L: Me gusta</p>
- <p class="hint">En cualquier momento: Ctrl+Alt+C centra la ventana en el monitor donde esté el mouse.</p>
-</section>
-<!-- Solo visible cuando el tema activo trae sonidos -->
-<section id="sfxRow" hidden><h2>Sonidos</h2><label>Sonidos del tema <input type="checkbox" id="sfx"></label></section>
+</main>
+<footer>
 <!-- Oculto por defecto: se revela con una combinación de botones de tamaño (ver settings.js) -->
-<section id="secretBox" hidden><h2>Código</h2>
+<section id="secretBox" hidden><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8h-1V6A5 5 0 0 0 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM9 8V6a3 3 0 0 1 6 0v2H9z"/></svg>Código</h2>
  <input id="secretCode" type="text" placeholder="…" autocomplete="off" spellcheck="false" aria-label="Código">
  <button id="secretGo" type="button">Desbloquear</button><p id="secretMsg" class="hint"></p>
 </section>
 <!-- Vuelve a los valores de fábrica -->
 <button id="reset" type="button">Restablecer valores</button>
+</footer>
 <script src="/themes.js"></script><script src="/settings.js"></script></body></html>

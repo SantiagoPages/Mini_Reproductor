@@ -16,8 +16,9 @@ audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
 - Atajos de teclado: Espacio (pausa), ← → (anterior/siguiente), ↑ ↓ (volumen), M (silencio) y L (Me gusta).
 - Recuerda la posición y el monitor de la ventana; si el monitor ya no está, vuelve al principal. Ctrl+Alt+C la centra en el monitor donde esté el mouse (útil si queda en un lugar inalcanzable).
 - Ubuntu: paquetes `.deb` y `.AppImage`; usa X11/XWayland, deja las teclas multimedia al sistema y avisa si falta el llavero.
-- Aviso opcional al cambiar de canción, en una ventanita abajo a la derecha, cuando el reproductor está en segundo plano.
-- Personalización: temas, tamaño y forma de la ventana, 5 tipografías, 5 estilos de botones
+- Aviso opcional al cambiar de canción, en una ventanita abajo a la derecha, cuando el reproductor está en segundo plano; toma el fondo y el color de acento del tema.
+- Inicio automático opcional con el sistema (Windows y Ubuntu): arranca oculto en la bandeja.
+- Personalización (Ajustes en pestañas): temas (incluidos Cherry, Sakura y Santuario), tamaño y forma de la ventana, 5 tipografías, 5 estilos de botones
   (incluida una rueda estilo iPod), forma de la portada y alto automático.
 - Se puede ocultar cualquier elemento (portada, artista, Me gusta, aleatorio, repetir, tiempo, volumen, dispositivos).
 - Aviso de nueva versión (opcional): consulta GitHub al iniciar; no instala nada, solo abre la página de la release.
@@ -78,7 +79,7 @@ un servidor de GitHub, a mano desde la pestaña *Actions* o automáticamente al 
   nuevas bloqueadas, permisos de mínimo privilegio y construcción del DOM con `textContent`.
 - **Repositorio**: no contiene ningún Client ID ni credencial.
 - **Privacidad**: la única consulta externa propia, además de Spotify, es el aviso de versión a la API pública de
-  GitHub (sin enviar datos personales). Se desactiva en Ajustes → Actualizaciones.
+  GitHub (sin enviar datos personales). Se desactiva en Ajustes → Sistema.
 - **Ajustes**: se guardan en local (`settings.json`) y se validan contra una lista de valores permitidos.
 
 ## Limitaciones

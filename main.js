@@ -161,7 +161,7 @@ const oneOf = list => v => list.includes(v);
 const bool = v => typeof v === 'boolean';
 const RULES = {
   // Además de los temas públicos, se admiten temas secretos desbloqueados (id "s_xxxx").
-  preset: v => ['classic', 'pure', 'light', 'neon', 'cherry', 'rainbow', 'custom'].includes(v) || (typeof v === 'string' && /^s_[a-z0-9]{1,16}$/.test(v)),
+  preset: v => ['classic', 'pure', 'light', 'neon', 'cherry', 'sakura', 'rainbow', 'custom'].includes(v) || (typeof v === 'string' && /^s_[a-z0-9]{1,16}$/.test(v)),
   bgMode: oneOf(['dynamic', 'fixed', 'gradient', 'blur', 'rainbow']),
   bgColor: isHex,
   accentMode: oneOf(['white', 'custom', 'auto']),
@@ -171,14 +171,14 @@ const RULES = {
   radius: num(0, 40),
   bgOpacity: num(.25, 1),
   // Etapa 2: qué se muestra, tipografía, estilo de botones y forma de la portada.
-  showCover: bool, showArtist: bool, showLike: bool, showShuffle: bool, showRepeat: bool, showDevices: bool, updateCheck: bool, sfx: bool, showTime: bool, showVolume: bool, trackNotice: bool,
+  showCover: bool, showArtist: bool, showLike: bool, showShuffle: bool, showRepeat: bool, showDevices: bool, updateCheck: bool, sfx: bool, showTime: bool, showVolume: bool, trackNotice: bool, autoStart: bool,
   font: oneOf(['inter', 'nunito', 'mono', 'outfit', 'dyslexic']),
   btnStyle: oneOf(['raised', 'flat', 'outline', 'icon', 'wheel']),
   coverShape: oneOf(['rounded', 'square', 'circle']),
   layoutH: num(120, 800)   // último alto de diseño informado por la interfaz (evita parpadeo al iniciar)
 };
 const DEFAULTS = { preset: 'classic', bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff', blossoms: false, scale: 1, radius: 28, bgOpacity: 1,
-  showCover: true, showArtist: true, showLike: true, showShuffle: true, showRepeat: true, showDevices: true, updateCheck: true, sfx: true, showTime: true, showVolume: true, trackNotice: false,
+  showCover: true, showArtist: true, showLike: true, showShuffle: true, showRepeat: true, showDevices: true, updateCheck: true, sfx: true, showTime: true, showVolume: true, trackNotice: false, autoStart: false,
   font: 'inter', btnStyle: 'raised', coverShape: 'rounded', layoutH: 484 };
 const sanitize = o => Object.fromEntries(Object.entries(RULES).filter(([k, ok]) => ok(o?.[k])).map(([k]) => [k, o[k]]));
 const cfgFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -188,15 +188,31 @@ BASE.height = settings.layoutH;
 // Escritura diferida: un selector de color emite decenas de cambios por segundo.
 const persist = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => fs.writeFile(cfgFile(), JSON.stringify(settings), e => e && console.error('Ajustes:', e.message)), 300); };
 
+// ---------- Inicio automático con el sistema ----------
+// La ruta registrada es la real: la versión portable de Windows corre desde una carpeta temporal (electron-builder
+// guarda la ruta original en PORTABLE_EXECUTABLE_FILE) y el AppImage de Linux en APPIMAGE.
+const HIDDEN = process.argv.includes('--hidden');
+const EXE = process.env.PORTABLE_EXECUTABLE_FILE || process.env.APPIMAGE || process.execPath;
+const autoFile = () => path.join(process.env.XDG_CONFIG_HOME || path.join(app.getPath('home'), '.config'), 'autostart', 'mini-player.desktop');
+function applyAutoStart(on) {
+  if (!app.isPackaged) return;   // en desarrollo (npm start) el ejecutable sería el de Electron a secas
+  try {
+    if (process.platform === 'linux') {
+      if (on) {
+        fs.mkdirSync(path.dirname(autoFile()), { recursive: true });
+        fs.writeFileSync(autoFile(), ['[Desktop Entry]', 'Type=Application', 'Name=Mini Player', `Exec="${EXE}" --hidden`, 'X-GNOME-Autostart-enabled=true', ''].join('\n'));
+      } else fs.rmSync(autoFile(), { force: true });
+    } else app.setLoginItemSettings({ openAtLogin: on, path: EXE, args: ['--hidden'] });
+  } catch (e) { console.error('Inicio automático:', e.message); }
+}
+
 function applySettings(next) {
   const resized = next.scale !== settings.scale;
-  const noticeOn = next.trackNotice && !settings.trackNotice;   // la opción del aviso se acaba de activar
+  if (next.autoStart !== settings.autoStart) applyAutoStart(next.autoStart);
   settings = next;
   persist();
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings', settings);   // vista previa en vivo
   if (resized) applyScale();
-  // Vista previa: al activar el aviso se muestra uno de ejemplo, sin depender del foco, para comprobar que funciona.
-  if (noticeOn) showToast({ title: 'Aviso de canción nueva', artist: 'Así se verá, abajo a la derecha', cover: '', bg: '#2a2060', fg: '#fff' });
   return settings;
 }
 
@@ -247,15 +263,18 @@ const str = (v, n) => typeof v === 'string' && v.length <= n;
 function cleanPack(o) {
   if (!o || typeof o !== 'object' || !/^s_[a-z0-9]{1,16}$/.test(o.id) || !str(o.label, 24) || !str(o.swatch, 200) || !/^[#a-z0-9(),.% -]+$/i.test(o.swatch)) return null;
   const settings = Object.fromEntries(Object.entries(sanitize(o.settings)).filter(([k]) => SECRET_KEYS.includes(k)));
-  const decor = (Array.isArray(o.decor) ? o.decor : []).slice(0, 4).filter(d => d && ['top', 'bottom'].includes(d.at) && str(d.svg, 20000)).map(d => ({ at: d.at, svg: d.svg }));
+  const decor = (Array.isArray(o.decor) ? o.decor : []).slice(0, 4).filter(d => d && ['top', 'bottom', 'full'].includes(d.at) && str(d.svg, 20000)).map(d => ({ at: d.at, svg: d.svg }));
   const f = o.fall, fall = f && str(f.svg, 4000) && Number.isInteger(f.count) && f.count >= 1 && f.count <= 24 ? { svg: f.svg, count: f.count } : null;
   // Imagen de fondo (data URI) con atenuación opcional, y sonido (mp3 en base64).
   const image = str(o.image, 600000) && /^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(o.image) ? o.image : null;
   const imageDim = num(0, .85)(o.imageDim) ? o.imageDim : 0;
   const data = str(o.sound?.data, 300000) && /^[A-Za-z0-9+/=]+$/.test(o.sound.data) ? o.sound.data : null;
   const sound = data ? { type: 'sample', volume: num(0, 1)(o.sound.volume) ? o.sound.volume : .5, data } : null;
-  const pad = num(0, 100)(o.pad) ? o.pad : 0;   // espacio extra abajo para que la decoración no tape los controles
-  return { id: o.id, label: o.label, swatch: o.swatch, settings, decor, fall, image, imageDim, pad, sound };
+  // Imagen con transparencia apoyada abajo (p. ej. personajes asomándose), con su ancho en % de la ventana.
+  const art = str(o.art, 400000) && /^data:image\/(webp|png|gif);base64,[A-Za-z0-9+/=]+$/.test(o.art) ? o.art : null;
+  const artW = num(20, 100)(o.artW) ? o.artW : 70;
+  const pad = num(0, 160)(o.pad) ? o.pad : 0;   // espacio extra abajo para que la decoración no tape los controles
+  return { id: o.id, label: o.label, swatch: o.swatch, settings, decor, fall, image, imageDim, art, artW, pad, sound };
 }
 const packFile = () => path.join(app.getPath('userData'), 'secretos.bin');
 let packs = [], fails = 0, lockUntil = 0;
@@ -265,7 +284,11 @@ function loadPacks() {
 function savePacks() {
   try { if (safeStorage.isEncryptionAvailable()) fs.writeFileSync(packFile(), safeStorage.encryptString(JSON.stringify(packs))); } catch (e) { console.error('Secretos:', e.message); }
 }
-ipcMain.handle('secret:list', () => packs);
+// Temas incluidos en la app (carpeta temas/): mismo formato y validación que los secretos, pero siempre disponibles, sin código.
+let builtin = [];
+try { const dir = path.join(__dirname, 'temas'); builtin = fs.readdirSync(dir).filter(f => f.endsWith('.json')).map(f => cleanPack(JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')))).filter(Boolean); } catch { /* sin temas incluidos */ }
+const allPacks = () => [...builtin, ...packs.filter(p => !builtin.some(b => b.id === p.id))];
+ipcMain.handle('secret:list', allPacks);
 ipcMain.handle('secret:unlock', async (e, code) => {
   if (!str(code, 200) || code.trim().length < 3) return { ok: false };
   if (Date.now() < lockUntil) return { ok: false, wait: true };
@@ -277,7 +300,7 @@ ipcMain.handle('secret:unlock', async (e, code) => {
   }
   if (!found) { if (++fails >= 5) { fails = 0; lockUntil = Date.now() + 30000; } return { ok: false }; }
   fails = 0; packs = [...packs.filter(p => p.id !== found.id), found]; savePacks();
-  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('secrets', packs);
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('secrets', allPacks());
   return { ok: true, label: found.label };
 });
 // ---------- Aviso de canción nueva ----------
@@ -286,6 +309,10 @@ ipcMain.handle('secret:unlock', async (e, code) => {
 const TOAST = { width: 290, height: 92, ms: 4500 };
 let toastWin, toastReady = false, toastPending = null, toastTimer;
 const colorOk = v => typeof v === 'string' && (/^#[0-9a-f]{6}$/i.test(v) || /^hsl\(\d{1,3} \d{1,3}% \d{1,3}%\)$/.test(v));
+// El fondo puede ser un color sólido o el degradado del tema; el acento llega como rgb(r g b).
+const GRAD = 'hsl\\(\\d{1,3} \\d{1,3}% \\d{1,3}%\\)';
+const bgOk = v => colorOk(v) || (typeof v === 'string' && new RegExp(`^linear-gradient\\(160deg, ${GRAD}, ${GRAD}\\)$`).test(v));
+const accentOk = v => typeof v === 'string' && /^rgb\(\d{1,3} \d{1,3} \d{1,3}\)$/.test(v);
 function pushToast(d) {
   const area = screen.getDisplayMatching(win.getBounds()).workArea;   // el monitor donde está el reproductor
   toastWin.setBounds({ x: area.x + area.width - TOAST.width - 12, y: area.y + area.height - TOAST.height - 12, width: TOAST.width, height: TOAST.height });
@@ -311,10 +338,12 @@ function showToast(d) {
   if (toastReady) pushToast(d); else toastPending = d;
 }
 ipcMain.on('announce', (e, d) => {
-  if (e.sender !== win?.webContents || !settings.trackNotice || BrowserWindow.getFocusedWindow()) return;
+  // La vista previa (al activar la opción) se muestra aunque Ajustes tenga el foco; el aviso normal no.
+  if (e.sender !== win?.webContents || !settings.trackNotice || (d?.preview !== true && BrowserWindow.getFocusedWindow())) return;
   const cover = str(d?.cover, 600000) && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(d.cover) ? d.cover : '';
   showToast({ title: str(d?.title, 200) ? d.title : '', artist: str(d?.artist, 200) ? d.artist : '', cover,
-    bg: colorOk(d?.bg) ? d.bg : '#2a2060', fg: ['#fff', '#16181d'].includes(d?.fg) ? d.fg : '#fff' });
+    bg: bgOk(d?.bg) ? d.bg : '#2a2060', fg: ['#fff', '#16181d'].includes(d?.fg) ? d.fg : '#fff',
+    accent: accentOk(d?.accent) ? d.accent : 'rgb(255 255 255)' });
 });
 ipcMain.handle('settings:get', () => settings);
 ipcMain.handle('settings:set', (e, partial) => applySettings({ ...settings, ...sanitize(partial) }));
@@ -409,8 +438,10 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === 'mediaKeySystem'));
   const start = startBounds();
   Object.assign(WIN, { width: start.width, height: start.height });
+  // Inicio automático (--hidden): la ventana arranca oculta en la bandeja. Sin bandeja se muestra igual, para no quedar invisible.
+  try { setupTray(); } catch (e) { console.error('Bandeja:', e.message); }
   win = new BrowserWindow({
-    ...start, frame: false, transparent: true, resizable: false, hasShadow: false,
+    ...start, show: !(HIDDEN && tray), frame: false, transparent: true, resizable: false, hasShadow: false,
     backgroundColor: '#00000000',
     webPreferences: WEBPREFS
   });
@@ -420,7 +451,7 @@ app.whenReady().then(async () => {
   // El reproductor es la ventana principal: al cerrarlo se cierra todo, incluida la de ajustes.
   win.on('closed', () => app.quit());
   win.loadURL(ORIGIN + '/');
-  try { setupTray(); } catch (e) { console.error('Bandeja:', e.message); }
+  if (settings.autoStart) applyAutoStart(true);   // renueva la ruta registrada (cambia al actualizar la versión)
   try { registerMediaKeys(); } catch (e) { console.error('Teclas multimedia:', e.message); }
   try { registerCenterKey(); } catch (e) { console.error('Atajo de centrado:', e.message); }
   if (!safeStorage.isEncryptionAvailable())

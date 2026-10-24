@@ -5,7 +5,7 @@ const $ = id => document.getElementById(id);
 const SHOWS = [['showCover', 'La portada'], ['showArtist', 'El artista'], ['showLike', 'Botón + (Me gusta y playlists)'], ['showShuffle', 'Aleatorio'], ['showRepeat', 'Repetir'], ['showTime', 'Barra de tiempo y tiempos'], ['showVolume', 'Volumen']];
 const SHAPES = [['rounded', 'Redondeada'], ['square', 'Cuadrada'], ['circle', 'Círculo']];
 SHOWS.push(['showDevices', 'Elegir dispositivo']);
-const MISC = [['updateCheck', 'Avisar si hay una versión nueva (consulta GitHub al iniciar)'], ['trackNotice', 'Avisar cuando cambia la canción (solo con la ventana en segundo plano)']];
+const MISC = [['updateCheck', 'Avisar si hay una versión nueva (consulta GitHub al iniciar)'], ['trackNotice', 'Avisar cuando cambia la canción (solo con la ventana en segundo plano)'], ['autoStart', 'Iniciar con el sistema (arranca oculto en la bandeja)']];
 for (const [k, label, box = 'shows'] of [...SHOWS, ...MISC.map(m => [...m, 'misc'])]) {
   const l = document.createElement('label'), i = document.createElement('input'); i.type = 'checkbox'; i.dataset.k = k;
   i.onchange = () => bridge.setSettings({ [k]: i.checked });   // independiente del tema
@@ -63,7 +63,7 @@ function show(s) {
   $('radius').value = s.radius; $('radiusV').textContent = s.radius + ' px';
   const tr = Math.round((1 - s.bgOpacity) * 100); $('bgOpacity').value = tr; $('bgOpacityV').textContent = tr + '%';
   for (const b of document.querySelectorAll('#sizes button')) b.classList.toggle('on', Math.abs(+b.dataset.s - s.scale) < .001);
-  $('decor').hidden = s.preset !== 'cherry';   // la opción solo existe en Cherry
+  $('decor').hidden = s.preset !== 'cherry' && s.preset !== 'sakura';   // la opción solo existe en Cherry y Sakura
   $('bgColorRow').hidden = s.bgMode !== 'fixed';
   $('accentColorRow').hidden = s.accentMode !== 'custom';
   for (const b of document.querySelectorAll('#themes button')) b.classList.toggle('on', b.dataset.id === s.preset);
@@ -93,6 +93,12 @@ for (const b of document.querySelectorAll('#sizes button')) b.onclick = () => { 
 $('font').onchange = () => bridge.setSettings({ font: $('font').value });
 $('btnStyle').onchange = () => bridge.setSettings({ btnStyle: $('btnStyle').value });
 $('reset').onclick = () => bridge.resetSettings();
+// Pestañas: la pestaña activa se indica en data-tab del body y el CSS muestra solo sus tarjetas.
+for (const b of document.querySelectorAll('#nav button')) b.onclick = () => {
+  document.body.dataset.tab = b.dataset.t;
+  for (const o of document.querySelectorAll('#nav button')) o.classList.toggle('on', o === b);
+  scrollTo(0, 0);
+};
 
 bridge.onSettings(show);
 bridge.getSettings().then(show);

@@ -11,7 +11,7 @@ const MAGIC = Buffer.from('MPS1');
 // Se normaliza el código para tolerar mayúsculas y espacios sobrantes.
 const norm = c => String(c).normalize('NFKC').trim().toLowerCase();
 const derive = (code, salt) => new Promise((ok, no) =>
-  crypto.scrypt(norm(code), salt, 32, { N: 1 << 16, r: 8, p: 1, maxmem: 160 * 1024 * 1024 }, (e, k) => e ? no(e) : ok(k)));
+  crypto.scrypt(norm(code), salt, 32, { N: 1 << 17, r: 8, p: 1, maxmem: 192 * 1024 * 1024 }, (e, k) => e ? no(e) : ok(k)));
 
 /** Cifra un objeto con el código dado y devuelve el Buffer del paquete. */
 async function seal(obj, code) {
