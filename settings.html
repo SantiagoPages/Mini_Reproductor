@@ -83,6 +83,16 @@
  </ul>
  <p class="hint">En cualquier momento: <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>C</kbd> centra la ventana en el monitor donde esté el mouse.</p>
 </section>
+<!-- Reproductor de YouTube -->
+<section data-tab="sys" id="ytSec"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4a2.5 2.5 0 0 0-1.8 1.8C2 8.8 2 12 2 12s0 3.2.4 4.8a2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8c.4-1.6.4-4.8.4-4.8s0-3.2-.4-4.8zM10 15V9l5.2 3z"/></svg>YouTube</h2>
+ <p class="hint">Pegá un enlace de YouTube (Ctrl+V) para verlo en el reproductor. Calidad y subtítulos: en el engranaje del propio video.</p>
+ <button id="ytGoogle" type="button">Conectar con Google</button>
+ <label>Seguir reproduciendo con la ventana tapada o en segundo plano <input type="checkbox" id="ytNoThrottle"></label>
+ <p class="hint">Para buscar videos desde el buscador hace falta tu propia clave de la API de YouTube (gratis, unas 100 búsquedas por día). Se guarda cifrada en esta PC.</p>
+ <input id="ytKey" type="password" placeholder="Clave de API de YouTube" autocomplete="off" spellcheck="false" aria-label="Clave de API de YouTube">
+ <div class="pair"><button id="ytKeySave" type="button">Guardar clave</button><button id="ytKeyHelp" type="button">Cómo conseguirla</button></div>
+ <p id="ytKeyMsg" class="hint"></p>
+</section>
 </main>
 <footer>
 <!-- Oculto por defecto: se revela con una combinación de botones de tamaño (ver settings.js) -->

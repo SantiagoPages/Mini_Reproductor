@@ -36,14 +36,17 @@ const FILES = {
 };
 // Content-Security-Policy de la interfaz. connect-src e img-src admiten https genérico porque
 // Spotify distribuye API, portadas y licencias DRM desde múltiples hosts; los scripts quedan
-// restringidos al propio origen y al SDK oficial.
-const CSP = "default-src 'self'; script-src 'self' https://sdk.scdn.co; style-src 'self'; img-src 'self' data: https:; " +
-  "connect-src https: wss:; frame-src https://sdk.scdn.co; media-src https: blob:; object-src 'none'; base-uri 'none'; form-action 'none'";
+// restringidos al propio origen, al SDK oficial de Spotify y a la API oficial del reproductor de YouTube.
+const CSP = "default-src 'self'; script-src 'self' https://sdk.scdn.co https://www.youtube.com https://s.ytimg.com; style-src 'self'; img-src 'self' data: https:; " +
+  "connect-src https: wss:; frame-src https://sdk.scdn.co https://www.youtube.com; media-src https: blob:; object-src 'none'; base-uri 'none'; form-action 'none'";
 // Ventana única de la aplicación.
 // Tamaño base de la interfaz (px CSS). La ventana mide BASE x escala; WIN es el tamaño vigente.
-// El alto base (BASE.height) lo informa la interfaz según los elementos visibles (ver 'layout-height').
+// El alto base (BASE.height) lo informa la interfaz según los elementos visibles (ver 'layout-height'); el ancho
+// base es 280 (modo música) o 384 (modo video), también informado por la interfaz (ver 'layout-width').
 const BASE = { width: 280, height: 484 };
 const WIN = { ...BASE };
+// Escala mínima pedida por la interfaz: con un video de YouTube el reproductor debe verse de al menos 200 px.
+let minZ = 0;
 const sizeFor = s => ({ width: Math.round(BASE.width * s), height: Math.round(BASE.height * s) });
 // La escala nunca supera lo que entra en el área útil del monitor (sin barra de tareas).
 const fitScale = (s, area) => Math.max(.5, Math.min(s, (area.height - 16) / BASE.height, (area.width - 16) / BASE.width));
@@ -109,8 +112,9 @@ ipcMain.handle('session:save', (e, s) => {
 ipcMain.handle('session:clear', () => fs.rmSync(sf(), { force: true }));
 // Descarga de portadas en el proceso principal (solo desde el CDN de Spotify), entregadas como
 // data URL: evita restricciones CORS al leer los píxeles en canvas para el color dominante.
+// También las miniaturas de YouTube (solo i.ytimg.com con un ID de video válido).
 ipcMain.handle('cover', async (e, url) => {
-  if (typeof url !== 'string' || !url.startsWith('https://i.scdn.co/image/')) return null;
+  if (typeof url !== 'string' || !(url.startsWith('https://i.scdn.co/image/') || /^https:\/\/i\.ytimg\.com\/vi\/[\w-]{11}\/(hq|mq|sd|maxres)default\.jpg$/.test(url))) return null;
   try { const r = await fetch(url); return 'data:image/jpeg;base64,' + Buffer.from(await r.arrayBuffer()).toString('base64'); } catch { return null; }
 });
 // Abre el login en el navegador del sistema; se valida el destino para no actuar como redirector abierto.
@@ -182,11 +186,13 @@ const RULES = {
   font: oneOf(['inter', 'nunito', 'mono', 'outfit', 'dyslexic']),
   btnStyle: oneOf(['raised', 'flat', 'outline', 'icon', 'wheel']),
   coverShape: oneOf(['rounded', 'square', 'circle']),
-  layoutH: num(120, 800)   // último alto de diseño informado por la interfaz (evita parpadeo al iniciar)
+  layoutH: num(120, 800),   // último alto de diseño informado por la interfaz (evita parpadeo al iniciar)
+  ytNoThrottle: bool,   // YouTube: no frenar la ventana cuando está tapada o en segundo plano
+  videoScale: num(1, 3)   // tamaño del modo video, elegido arrastrando los bordes
 };
 const DEFAULTS = { preset: 'classic', bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff', blossoms: false, scale: 1, radius: 28, bgOpacity: 1,
   showCover: true, showArtist: true, showLike: true, showShuffle: true, showRepeat: true, showDevices: true, updateCheck: true, sfx: true, showTime: true, showVolume: true, trackNotice: false, autoStart: false,
-  font: 'inter', btnStyle: 'raised', coverShape: 'rounded', layoutH: 484 };
+  font: 'inter', btnStyle: 'raised', coverShape: 'rounded', layoutH: 484, ytNoThrottle: false, videoScale: 1 };
 const sanitize = o => Object.fromEntries(Object.entries(RULES).filter(([k, ok]) => ok(o?.[k])).map(([k]) => [k, o[k]]));
 const cfgFile = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...DEFAULTS }, saveTimer;
@@ -216,6 +222,7 @@ function applyAutoStart(on) {
 function applySettings(next) {
   const resized = next.scale !== settings.scale;
   if (next.autoStart !== settings.autoStart) applyAutoStart(next.autoStart);
+  if (next.ytNoThrottle !== settings.ytNoThrottle && win && !win.isDestroyed()) win.webContents.setBackgroundThrottling(!next.ytNoThrottle);
   settings = next;
   persist();
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings', settings);   // vista previa en vivo
@@ -230,7 +237,8 @@ function applySettings(next) {
 function applyScale(keepTop = false) {
   if (!win || win.isDestroyed()) return;
   const b = win.getBounds(), area = screen.getDisplayMatching(b).workArea;
-  const size = sizeFor(fitScale(settings.scale, area));
+  // El modo video (ancho 384) tiene su propio tamaño, elegido desde los bordes; el modo música usa el de Ajustes.
+  const size = sizeFor(fitScale(Math.max(BASE.width === 384 ? settings.videoScale : settings.scale, minZ), area));
   Object.assign(WIN, size);
   const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
   const x = clamp(Math.round(b.x + b.width / 2 - size.width / 2), area.x, area.x + area.width - size.width);
@@ -244,6 +252,26 @@ ipcMain.on('layout-height', (e, h) => {
   h = Math.round(h); if (h === BASE.height) return;
   BASE.height = h; settings = { ...settings, layoutH: h }; persist(); applyScale(true);
 });
+// Ancho de diseño (modo música o modo video) y escala mínima para que el video de YouTube se vea de 200 px o más.
+ipcMain.on('layout-width', (e, w, z) => {
+  if (e.sender !== win?.webContents || ![280, 384].includes(w) || !num(0, 1)(z)) return;
+  if (w === BASE.width && z === minZ) return;
+  BASE.width = w; minZ = z; applyScale(true);
+});
+// Cambio de tamaño del modo video desde los bordes: la interfaz envía la escala deseada y qué borde se arrastra; el
+// borde opuesto queda fijo. Al soltar se guarda el tamaño.
+let rzFrom = null;
+ipcMain.on('vresize-start', e => { if (e.sender === win?.webContents && BASE.width === 384) rzFrom = win.getBounds(); });
+ipcMain.on('vresize', (e, z, left, top) => {
+  if (e.sender !== win?.webContents || !rzFrom || !num(.5, 4)(z) || typeof left !== 'boolean' || typeof top !== 'boolean') return;
+  const area = screen.getDisplayMatching(rzFrom).workArea;
+  z = Math.min(3, Math.max(1, z));
+  const size = sizeFor(fitScale(Math.max(z, minZ), area));
+  Object.assign(WIN, size); settings = { ...settings, videoScale: size.width / BASE.width };
+  const x = left ? rzFrom.x + rzFrom.width - size.width : rzFrom.x, y = top ? rzFrom.y + rzFrom.height - size.height : rzFrom.y;
+  win.setResizable(true); win.setBounds({ x, y, ...size }); win.setResizable(false);
+});
+ipcMain.on('vresize-end', e => { if (e.sender === win?.webContents && rzFrom) { rzFrom = null; persist(); } });
 // ---------- Aviso de actualizaciones ----------
 // Consulta la última release publicada en GitHub (solo lectura, sin credenciales) y avisa si es más nueva.
 // No descarga ni instala nada: el botón abre la página de la release en el navegador. El renderer no envía
@@ -373,6 +401,56 @@ function openSettings() {
   settingsWin.loadURL(ORIGIN + '/settings.html');
 }
 ipcMain.on('open-settings', openSettings);
+// ---------- Búsqueda en YouTube (YouTube Data API v3 con la clave del propio usuario) ----------
+// La app no trae ninguna clave: cada usuario crea la suya gratis en Google Cloud. Se guarda cifrada con safeStorage y
+// nunca sale del proceso principal (la interfaz solo pide búsquedas y recibe resultados ya depurados). Cada búsqueda
+// gasta 100 unidades del cupo diario de 10.000 (unas 100 búsquedas por día).
+const ytKeyFile = () => path.join(app.getPath('userData'), 'youtube-key.bin');
+const readYtKey = () => { try { return safeStorage.decryptString(fs.readFileSync(ytKeyFile())); } catch { return ''; } };
+const YT_API = 'https://www.googleapis.com/youtube/v3/';
+ipcMain.handle('ytkey:status', () => !!readYtKey());
+// Guarda la clave tras comprobarla con un pedido barato (1 unidad). Una clave vacía la borra.
+ipcMain.handle('ytkey:set', async (e, key) => {
+  if (key === '') { fs.rmSync(ytKeyFile(), { force: true }); return { ok: true, removed: true }; }
+  if (typeof key !== 'string' || !/^[A-Za-z0-9_-]{30,60}$/.test(key.trim())) return { ok: false, why: 'format' };
+  key = key.trim();
+  try {
+    const r = await fetch(YT_API + 'videos?part=id&id=jNQXAC9IVRw&key=' + encodeURIComponent(key));
+    if (!r.ok) return { ok: false, why: r.status === 403 ? 'forbidden' : 'invalid' };
+  } catch { return { ok: false, why: 'net' }; }
+  if (!safeStorage.isEncryptionAvailable()) return { ok: false, why: 'storage' };
+  fs.writeFileSync(ytKeyFile(), safeStorage.encryptString(key)); return { ok: true };
+});
+ipcMain.on('ytkey-help', () => shell.openExternal('https://console.cloud.google.com/apis/library/youtube.googleapis.com'));
+// La API devuelve textos con entidades HTML (&amp;, &#39;…): se convierten a texto plano (la interfaz usa textContent).
+const ytText = t => String(t).replace(/&(amp|lt|gt|quot|#39|#x27);/g, (m, k) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", '#x27': "'" })[k]).slice(0, 200);
+ipcMain.handle('yt:search', async (e, q) => {
+  if (e.sender !== win?.webContents || typeof q !== 'string' || !q.trim() || q.length > 100) return { error: 'bad' };
+  const key = readYtKey(); if (!key) return { error: 'nokey' };
+  // Solo videos que se pueden ver dentro de otras apps (videoEmbeddable), para no listar los que darían error.
+  const u = YT_API + 'search?' + new URLSearchParams({ part: 'snippet', type: 'video', videoEmbeddable: 'true', maxResults: '10', q: q.trim(), key });
+  try {
+    const r = await fetch(u);
+    if (!r.ok) return { error: r.status === 403 ? 'quota' : 'http', status: r.status };
+    const d = await r.json();
+    return { items: (d.items || []).filter(x => /^[\w-]{11}$/.test(x?.id?.videoId || '')).map(x => ({ id: x.id.videoId, title: ytText(x.snippet?.title || ''), channel: ytText(x.snippet?.channelTitle || '') })) };
+  } catch { return { error: 'net' }; }
+});
+// Inicio de sesión de Google para YouTube, en una ventana aparte con la misma sesión que el reproductor (así el video
+// embebido usa esa cuenta). No se cambia el agente de usuario ni se intenta esquivar ningún bloqueo de Google.
+let googleWin;
+ipcMain.on('yt-google', () => {
+  if (googleWin && !googleWin.isDestroyed()) { googleWin.show(); return googleWin.focus(); }
+  googleWin = new BrowserWindow({ width: 480, height: 700, title: 'Conectar con Google', autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } });
+  googleWin.setMenu(null);
+  googleWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  // Al terminar, Google redirige a YouTube: se cierra la ventana y se avisa al reproductor.
+  googleWin.webContents.on('did-navigate', (ev, url) => {
+    if (new URL(url).hostname === 'www.youtube.com') { googleWin.close(); win?.webContents.send('yt-login'); }
+  });
+  googleWin.loadURL('https://accounts.google.com/ServiceLogin?continue=' + encodeURIComponent('https://www.youtube.com/'));
+});
 // Acciones del asistente de configuración. No reciben parámetros del renderer: no hay entrada que validar.
 ipcMain.on('open-dashboard', () => shell.openExternal('https://developer.spotify.com/dashboard'));
 ipcMain.on('copy-redirect', () => clipboard.writeText(ORIGIN + '/'));
@@ -455,10 +533,14 @@ app.whenReady().then(async () => {
   win = new BrowserWindow({
     ...start, show: !(HIDDEN && tray), frame: false, transparent: true, resizable: false, hasShadow: false,
     backgroundColor: '#00000000',
-    webPreferences: WEBPREFS
+    webPreferences: { ...WEBPREFS, backgroundThrottling: !settings.ytNoThrottle }
   });
-  // Se bloquean ventanas nuevas y la navegación fuera de la interfaz.
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Se bloquean ventanas nuevas y la navegación fuera de la interfaz. Los enlaces del reproductor de YouTube
+  // (por ejemplo «Ver en YouTube») se abren en el navegador del sistema.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
   win.webContents.on('will-navigate', e => e.preventDefault());
   // El reproductor es la ventana principal: al cerrarlo se cierra todo, incluida la de ajustes.
   win.on('closed', () => app.quit());
@@ -470,5 +552,5 @@ app.whenReady().then(async () => {
     console.error('Aviso: no hay almacén de claves (en Ubuntu, instalar/desbloquear gnome-keyring); la sesión de Spotify no se recordará.');
 });
 // Red de seguridad: al salir se destruyen la ventana de ajustes y la del aviso aunque sigan abiertas.
-app.on('before-quit', () => { flushState(); for (const w of [settingsWin, toastWin]) if (w && !w.isDestroyed()) w.destroy(); });
+app.on('before-quit', () => { flushState(); for (const w of [settingsWin, toastWin, googleWin]) if (w && !w.isDestroyed()) w.destroy(); });
 app.on('window-all-closed', () => app.quit());

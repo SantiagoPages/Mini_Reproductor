@@ -42,6 +42,20 @@ contextBridge.exposeInMainWorld('bridge', {
   announce: d => ipcRenderer.send('announce', d),
   // Alto de diseño informado por la interfaz y arrastre manual de la ventana.
   setLayoutHeight: h => ipcRenderer.send('layout-height', h),
+  // Ancho de diseño (280 modo música, 384 modo video) y escala mínima para el video de YouTube.
+  setLayoutWidth: (w, z) => ipcRenderer.send('layout-width', w, z),
+  // Tamaño del modo video desde los bordes: inicio, escala deseada (con el borde que se arrastra) y fin.
+  resizeStart: () => ipcRenderer.send('vresize-start'),
+  resizeVideo: (z, left, top) => ipcRenderer.send('vresize', z, left, top),
+  resizeEnd: () => ipcRenderer.send('vresize-end'),
+  // YouTube: abrir el inicio de sesión de Google y aviso de que terminó.
+  ytGoogle: () => ipcRenderer.send('yt-google'),
+  // Búsqueda en YouTube con la clave propia del usuario (la clave nunca llega a la interfaz).
+  ytKeyStatus: () => ipcRenderer.invoke('ytkey:status'),
+  ytKeySet: k => ipcRenderer.invoke('ytkey:set', k),
+  ytKeyHelp: () => ipcRenderer.send('ytkey-help'),
+  ytSearch: q => ipcRenderer.invoke('yt:search', q),
+  onYtLogin: cb => ipcRenderer.on('yt-login', () => cb()),
   dragStart: () => ipcRenderer.send('drag-start'),
   dragMove: (dx, dy) => ipcRenderer.send('drag-move', dx, dy)
 });

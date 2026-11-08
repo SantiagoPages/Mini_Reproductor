@@ -49,15 +49,23 @@
  <!-- Mini ventana "Guardar en…" (Me gusta y playlists), se abre con el botón + -->
  <div id="pick" hidden role="dialog" aria-label="Guardar en"><div id="pickh"><b>Guardar en…</b><button type="button" id="pickx" aria-label="Cerrar">×</button></div><ul id="picklist"></ul></div>
  <section id="now">
- <div id="cover"></div>
+ <!-- Portada. Con un video de YouTube, el reproductor oficial ocupa este recuadro (nada se dibuja encima). -->
+ <div id="cover"><div id="ytbox" hidden><div id="yt"></div></div></div>
+ <!-- Modo "solo video": debajo del video queda solo este botón (o Esc) para volver a los controles -->
+ <div id="soloBar"><button class="btn mini" id="soloOff" title="Mostrar controles (Esc)"><svg viewBox="0 0 24 24"><path d="M7.4 15.4 12 10.8l4.6 4.6L18 14l-6-6-6 6z"/></svg></button></div>
  <div id="info"><div id="txt"><div id="title">Nada sonando</div><div id="artist">Pegá un link de Spotify (Ctrl+V)</div></div>
+  <button class="btn" id="vidbtn" title="Modo video"><svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 14H3V5h18v12zM10 8v6l5-3z"/></svg></button>
   <button class="btn" id="like" title="Guardar en tus Me gusta" hidden><svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></button></div>
  </section>
  <!-- Biblioteca y búsqueda (alterna con #now) -->
  <section id="library" hidden>
   <div id="tabs"><button type="button" data-t="search" class="on">Buscar</button><button type="button" data-t="liked" title="Me gusta" aria-label="Me gusta"><svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button><button type="button" data-t="top">Top</button><button type="button" data-t="coll">Colección</button><button type="button" data-t="queue">Cola</button><button type="button" data-t="history">Reciente</button></div>
   <div id="ranges" hidden><button type="button" data-r="short_term">4 semanas</button><button type="button" data-r="medium_term" class="on">6 meses</button><button type="button" data-r="long_term">Siempre</button></div>
+  <!-- Qué muestra Recientes: canciones de Spotify, videos vistos o una mezcla por fecha -->
+  <div id="hsrc" role="group" aria-label="Qué mostrar" hidden><button type="button" data-h="spotify">Canciones</button><button type="button" data-h="youtube">Videos</button><button type="button" data-h="both">Mezcla</button></div>
   <input id="q" placeholder="Buscar o pegar un link" autocomplete="off" spellcheck="false">
+  <!-- Dónde buscar: Spotify mientras se escribe; YouTube con Enter (cada búsqueda gasta cupo diario) -->
+  <div id="srcs" role="group" aria-label="Dónde buscar"><button type="button" data-s="spotify">Spotify</button><button type="button" data-s="youtube">YouTube</button><button type="button" data-s="both">Ambas</button></div>
   <ul id="list"></ul>
  </section>
  <div id="time"><span id="cur">0:00</span><div id="bar"><div id="track"><div id="fill"></div><div id="knob"></div></div></div><span id="dur">0:00</span></div>
@@ -68,6 +76,16 @@
   <button class="btn lg pp" id="play" title="Pausa / Reanudar"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
   <button class="btn sm" id="next" title="Siguiente"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18V6l8.5 6z"/></svg></button>
   <button class="btn mini" id="rep" title="Repetir: apagado"><svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg></button>
+ </div>
+ <!-- Controles del modo video: transporte a la izquierda; velocidad, solo video y volver al modo música a la derecha -->
+ <div id="ctlV">
+  <button class="btn md" id="vPrev" title="Anterior"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zM9.5 12 18 6v12z"/></svg></button>
+  <button class="btn sm pp" id="vPlay" title="Pausa / Reanudar"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+  <button class="btn md" id="vNext" title="Siguiente"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18V6l8.5 6z"/></svg></button>
+  <span class="gap"></span>
+  <button class="btn md rate" id="rate" title="Velocidad de reproducción">1×</button>
+  <button class="btn md" id="solo" title="Solo video (Esc para volver)"><svg viewBox="0 0 24 24"><path d="M3 5v4h2V5h4V3H5c-1.1 0-2 .9-2 2zm2 10H3v4c0 1.1.9 2 2 2h4v-2H5v-4zm14 4h-4v2h4c1.1 0 2-.9 2-2v-4h-2v4zm0-16h-4v2h4v4h2V5c0-1.1-.9-2-2-2z"/></svg></button>
+  <button class="btn md" id="toMusic" title="Volver al modo música"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h12v2H3zm0 5h16v2H3z"/></svg></button>
  </div>
  <!-- Rueda estilo reproductor MP4 (estilo de botones "wheel"): MENU arriba, anterior/siguiente a los lados, VOL abajo -->
  <div id="wheel">

@@ -55,7 +55,7 @@ function show(s) {
   for (const i of document.querySelectorAll('#shows input, #misc input')) i.checked = s[i.dataset.k] !== false;
   for (const b of document.querySelectorAll('#coverShape button')) b.classList.toggle('on', b.dataset.v === s.coverShape);
   $('coverShape').hidden = s.showCover === false;   // sin portada no hay forma que elegir
-  $('font').value = s.font; $('btnStyle').value = s.btnStyle;
+  $('font').value = s.font; $('btnStyle').value = s.btnStyle; $('ytNoThrottle').checked = !!s.ytNoThrottle;
   $('bgMode').value = s.bgMode; $('bgColor').value = s.bgColor;
   $('accentMode').value = s.accentMode; $('accentColor').value = s.accentColor;
   $('blossoms').checked = !!s.blossoms;
@@ -94,6 +94,20 @@ for (const b of document.querySelectorAll('#sizes button')) b.onclick = () => { 
 $('font').onchange = () => bridge.setSettings({ font: $('font').value });
 $('btnStyle').onchange = () => bridge.setSettings({ btnStyle: $('btnStyle').value });
 $('reset').onclick = () => bridge.resetSettings();
+// YouTube: inicio de sesión de Google (ventana aparte) y no frenar la ventana tapada o en segundo plano.
+$('ytGoogle').onclick = () => bridge.ytGoogle();
+$('ytNoThrottle').onchange = () => bridge.setSettings({ ytNoThrottle: $('ytNoThrottle').checked });
+// Clave de la API de YouTube: se comprueba y se guarda en el proceso principal; acá nunca se vuelve a mostrar.
+const ytKeyState = on => { $('ytKeyMsg').textContent = on ? 'Clave guardada. Para cambiarla, pegá otra; para borrarla, guardá el campo vacío.' : 'Sin clave: el buscador solo busca en Spotify.'; };
+bridge.ytKeyStatus?.().then(ytKeyState);
+$('ytKeySave').onclick = async () => {
+  const k = $('ytKey').value.trim(); $('ytKey').value = ''; $('ytKeyMsg').textContent = k ? 'Comprobando…' : '';
+  const r = await bridge.ytKeySet(k);
+  if (r.ok) return ytKeyState(!r.removed);
+  $('ytKeyMsg').textContent = { format: 'Eso no parece una clave de API (suelen empezar con «AIza»).', forbidden: 'La clave existe, pero la API de YouTube no está habilitada en tu proyecto de Google Cloud.',
+    invalid: 'Google rechazó la clave. Revisá que esté bien copiada.', net: 'Sin conexión: no se pudo comprobar la clave.', storage: 'Esta PC no tiene dónde guardarla cifrada.' }[r.why] || 'No se pudo guardar la clave.';
+};
+$('ytKeyHelp').onclick = () => bridge.ytKeyHelp();
 // Pestañas: la pestaña activa se indica en data-tab del body y el CSS muestra solo sus tarjetas.
 for (const b of document.querySelectorAll('#nav button')) b.onclick = () => {
   document.body.dataset.tab = b.dataset.t;

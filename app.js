@@ -30,6 +30,10 @@ const ICON = { play: '<path d="M8 5v14l11-7z"/>', pause: '<path d="M6 5h4v14H6zM
   mute: '<path d="M3 9v6h4l5 5V4L7 9zm12.3.3 1.4-1.4 2.3 2.3 2.3-2.3 1.4 1.4-2.3 2.3 2.3 2.3-1.4 1.4-2.3-2.3-2.3 2.3-1.4-1.4 2.3-2.3z"/>' };
 // Estado de módulo: credenciales en memoria (S), parámetros del login en curso y estado del reproductor.
 let S = { cid: '', rt: '', at: '', exp: 0 }, ver, state, player, dev, st, t0 = 0, lastCover = '';
+// Fuente de lo que suena ('spotify' o 'youtube') y estado del reproductor de YouTube (ver la sección YouTube).
+let src = 'spotify', yt = null, ytReady = false, ytApi = null, ytList = [], ytIdx = -1, ytId = '';
+// Enlace de YouTube (video, shorts, embed, live o youtu.be) con su ID de 11 caracteres.
+const YTID = /(?:youtube\.com\/(?:watch\?(?:[^#\s]*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/;
 
 // ---------- Autenticación: OAuth 2.0 Authorization Code con PKCE ----------
 // Cliente público: no existe client secret. El refresh token es la única credencial persistida
@@ -117,10 +121,16 @@ function start() {
   const s = document.createElement('script'); s.src = 'https://sdk.scdn.co/spotify-player.js'; document.head.append(s);
 }
 // Mensaje breve de estado/error bajo el título (vacío = sin mensaje).
-const status = t => $('status').textContent = t || '';
+let statusTimer;
+const status = (t, ms = 0) => {
+  clearTimeout(statusTimer); $('status').textContent = $('status').title = t || '';   // title: texto completo si no entra
+  if (t && ms) statusTimer = setTimeout(() => { if ($('status').textContent === t) status(''); }, ms);
+};
 
 /** Refleja el estado del SDK en la interfaz: metadatos, play/pausa, aleatorio, portada y color. */
 async function render() {
+  // Con YouTube activo, el estado de Spotify solo importa si Spotify vuelve a sonar (por ejemplo, desde la biblioteca).
+  if (src === 'youtube') { if (st && !st.paused) useSpotify(); else return; }
   if (st) { paintShuffle(!!st.shuffle); paintRepeat(st.repeat_mode || 0); }
   const t = st?.track_window?.current_track; if (!t) return;
   $('title').textContent = t.name; $('artist').textContent = t.artists.map(a => a.name).join(', ');
@@ -134,7 +144,7 @@ async function render() {
   if (url && url !== lastCover) {
     lastCover = url; const data = await bridge.cover(url); if (url !== lastCover) return;   // descarta respuestas obsoletas
     if (data) {
-      coverData = cover = data; $('cover').style.backgroundImage = `url(${data})`;
+      coverData = cover = data; setCover(data);
       // Se espera a que el color de la portada nueva esté aplicado: el aviso debe salir con el color de esta canción, no de la anterior.
       await new Promise(done => { const img = new Image(); img.onload = () => { if (url === lastCover) tint(img); done(); }; img.onerror = done; img.src = data; });
       if (url !== lastCover) return;
@@ -151,11 +161,20 @@ function announce(t, cover, preview = false) {
 }
 // Progreso: el SDK emite estado solo ante eventos, por lo que la posición se interpola localmente cada 200 ms.
 let dragging = false;
-const show = r => { const pc = r * 100 + '%'; $('fill').style.width = pc; $('knob').style.left = pc; $('cur').textContent = fmt(r * st.duration); };
+// Duración vigente en ms (de Spotify o del video de YouTube).
+const curDur = () => src === 'youtube' ? (ytReady ? yt.getDuration() * 1000 : 0) : st?.duration || 0;
+const show = r => { const pc = r * 100 + '%'; $('fill').style.width = pc; $('knob').style.left = pc; $('cur').textContent = fmt(r * curDur()); };
 setInterval(() => {
-  if (!st?.duration || dragging) return;
+  if (dragging) return;
+  if (src === 'youtube') {   // YouTube informa la posición al consultarla (sin red)
+    const d = curDur(); if (!d) return;
+    $('dur').textContent = fmt(d); return show(Math.min(1, yt.getCurrentTime() * 1000 / d));
+  }
+  if (!st?.duration) return;
   show(Math.min(st.duration, st.paused ? st.position : st.position + performance.now() - t0) / st.duration);
 }, 200);
+/** Pinta la portada (en el modo video, también el fondo difuminado de los costados). */
+const setCover = data => $('cover').style.setProperty('--cov', `url(${data})`);
 
 // ---------- Color dominante de la portada ----------
 /** RGB (0..255) a HSL (h en grados; s y l en 0..1). */
@@ -311,7 +330,9 @@ function paint() {
   document.addEventListener('visibilitychange', () => document.body.classList.toggle('paused', document.hidden));
 })();
 // Escala: el proceso principal dimensiona la ventana; la interfaz (280 px de diseño) se ajusta a su ancho.
-const fitScale = () => document.documentElement.style.setProperty('--z', (innerWidth / 280).toFixed(4));
+// El ancho de diseño es 280 en el modo música y 384 en el modo video.
+let designW = 280;
+const fitScale = () => document.documentElement.style.setProperty('--z', (innerWidth / designW).toFixed(4));
 addEventListener('resize', fitScale); fitScale();
 // Elementos visibles, tipografía, estilo de botones y forma de portada: atributos/clases que activan reglas CSS.
 const HIDES = { showCover: 'no-cover', showArtist: 'no-artist', showLike: 'no-like', showShuffle: 'no-shuffle', showRepeat: 'no-repeat', showDevices: 'no-devices', showTime: 'no-time', showVolume: 'no-volume' };
@@ -426,6 +447,7 @@ bridge.getSettings?.().then(applyCfg);
  * explícita del usuario y transfiere la reproducción aquí; nunca se transfiere de forma automática.
  */
 async function togglePlayback() {
+  if (src === 'youtube') return ytToggle();
   if (!player || !dev) return;
   if (await player.getCurrentState()) return player.togglePlay();
   const r = await sp('/me/player', 'PUT', { device_ids: [dev], play: true });
@@ -433,6 +455,7 @@ async function togglePlayback() {
 }
 // Detener: Spotify no tiene "stop", así que se pausa y se vuelve al principio de la pista.
 async function stopPlayback() {
+  if (src === 'youtube') { if (ytReady) { yt.pauseVideo(); yt.seekTo(0, true); } return; }
   if (!player || !(await player.getCurrentState())) return;
   await player.pause(); await player.seek(0);
   if (st) { st.position = 0; t0 = performance.now(); }
@@ -441,19 +464,24 @@ $('play').onclick = togglePlayback;
 // Anterior: si la pista ya lleva más de 4 s, se reinicia en vez de volver a la anterior (como en la app de Spotify).
 const RESTART_MS = 4000;
 function goPrev() {
+  if (src === 'youtube') return ytPrev();
   if (!player) return;
   const pos = st ? (st.paused ? st.position : st.position + performance.now() - t0) : 0;
   if (pos > RESTART_MS) { player.seek(0); st.position = 0; t0 = performance.now(); } else player.previousTrack();
 }
 $('prev').onclick = goPrev;
-$('next').onclick = () => player?.nextTrack();
+/** Siguiente: en YouTube, el próximo video pegado; en Spotify, la pista siguiente. */
+function goNext() { if (src === 'youtube') return ytStep(1); player?.nextTrack(); }
+$('next').onclick = goNext;
 // Barra de progreso: arrastre con captura de puntero; el seek se ejecuta al soltar para no generar saltos de audio.
 const ratio = e => { const r = $('track').getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
-$('bar').onpointerdown = e => { if (!st?.duration) return; dragging = true; $('bar').classList.add('drag'); $('bar').setPointerCapture(e.pointerId); show(ratio(e)); };
+$('bar').onpointerdown = e => { if (!curDur()) return; dragging = true; $('bar').classList.add('drag'); $('bar').setPointerCapture(e.pointerId); show(ratio(e)); };
 $('bar').onpointermove = e => { if (dragging) show(ratio(e)); };
 $('bar').onpointerup = e => {
   if (!dragging) return; dragging = false; $('bar').classList.remove('drag');
-  const r = ratio(e); player.seek(r * st.duration); st.position = r * st.duration; t0 = performance.now();
+  const r = ratio(e);
+  if (src === 'youtube') return ytReady && yt.seekTo(r * curDur() / 1000, true);
+  player.seek(r * st.duration); st.position = r * st.duration; t0 = performance.now();
 };
 $('bar').onpointercancel = () => { dragging = false; $('bar').classList.remove('drag'); };
 // Arrastre de ventana: el movimiento se delega al proceso principal; se excluyen los controles interactivos.
@@ -465,15 +493,18 @@ document.addEventListener('pointerdown', e => {
 document.addEventListener('pointermove', e => { if (from) bridge.dragMove(e.screenX - from.x, e.screenY - from.y); });
 document.addEventListener('pointerup', () => from = null);
 document.addEventListener('pointercancel', () => from = null);
-$('pin').onclick = async () => $('pin').classList.toggle('on', await bridge.togglePin());
+const paintPin = v => $('pin').classList.toggle('on', v);
+$('pin').onclick = async () => paintPin(await bridge.togglePin());
 $('close').onclick = () => bridge.close();
 $('cfg').onclick = () => bridge.openSettings();
-bridge.onPinned?.(v => $('pin').classList.toggle('on', v));
-bridge.onMedia?.(cmd => { if (!player) return; if (cmd === 'toggle') togglePlayback(); else if (cmd === 'stop') stopPlayback(); else if (cmd === 'next') player.nextTrack(); else if (cmd === 'prev') goPrev(); });
-// Atajo: al pegar (Ctrl+V) un enlace de Spotify se inicia su reproducción.
+bridge.onPinned?.(paintPin);
+bridge.onMedia?.(cmd => { if (!player && src !== 'youtube') return; if (cmd === 'toggle') togglePlayback(); else if (cmd === 'stop') stopPlayback(); else if (cmd === 'next') goNext(); else if (cmd === 'prev') goPrev(); });
+// Atajo: al pegar (Ctrl+V) un enlace de Spotify o de YouTube se inicia su reproducción.
 document.addEventListener('paste', async e => {
-  if (e.target.tagName === 'INPUT' || !dev) return;
-  const m = (e.clipboardData.getData('text') || '').match(LINK); if (!m) return;
+  if (e.target.tagName === 'INPUT') return;
+  const t = e.clipboardData.getData('text') || '', y = t.match(YTID);
+  if (y) return playYt(y[1]);
+  const m = dev && t.match(LINK); if (!m) return;
   await playUri(`spotify:${m[1]}:${m[2]}`);
 });
 
@@ -553,7 +584,7 @@ paintVol(+$('vol').value);
 /** Aplica un volumen 0..100 (control superior, rueda del ratón o modo VOL de la rueda). */
 function applyVolume(p) {
   p = Math.min(100, Math.max(0, Math.round(p))); $('vol').value = p; volTouched = Date.now(); volLabel(); paintVol(p);
-  player?.setVolume(p / 100); try { localStorage.setItem('vol', p / 100); } catch {}
+  player?.setVolume(p / 100); if (ytReady) yt.setVolume(p); try { localStorage.setItem('vol', p / 100); } catch {}
 }
 $('vol').oninput = () => applyVolume(+$('vol').value);
 // Al soltar el deslizador se recuerda el volumen elegido (un 0 no cuenta: así se puede volver al valor anterior).
@@ -581,7 +612,8 @@ async function checkVolume() {
 // entre consultas. Con la biblioteca abierta, la pestaña actual se refresca cada minuto (ver más abajo).
 let lastSync = 0;
 function syncRemote() {
-  if (document.hidden || $('player').hidden || Date.now() - lastSync < 30000) return;
+  // Mientras suena YouTube no se consulta a Spotify (cuida el límite de uso de la API).
+  if (src === 'youtube' || document.hidden || $('player').hidden || Date.now() - lastSync < 30000) return;
   lastSync = Date.now(); checkLike(); checkVolume();
 }
 window.addEventListener('focus', syncRemote);
@@ -608,7 +640,7 @@ $('wPlay').onclick = togglePlayback;
 $('wMenu').onclick = () => bridge.openSettings();
 $('wVol').onclick = () => setVolMode(!volMode);
 $('wPrev').onclick = () => volMode ? nudge(-5) : goPrev();
-$('wNext').onclick = () => volMode ? nudge(5) : player?.nextTrack();
+$('wNext').onclick = () => volMode ? nudge(5) : goNext();
 $('wheel').addEventListener('wheel', e => { e.preventDefault(); nudge(e.deltaY < 0 ? 5 : -5); }, { passive: false });
 
 // ---------- Atajos de teclado ----------
@@ -623,7 +655,7 @@ document.addEventListener('keydown', e => {
   let used = true;
   if (k === ' ') { if (!e.repeat) togglePlayback(); }
   else if (k === 'ArrowLeft' && !onRange) goPrev();
-  else if (k === 'ArrowRight' && !onRange) player?.nextTrack();
+  else if (k === 'ArrowRight' && !onRange) goNext();
   else if ((k === 'ArrowUp' || k === 'ArrowDown') && !onRange && !listOpen) nudge(k === 'ArrowUp' ? 5 : -5);
   else if (k === 'm') { if (!e.repeat) toggleMute(); }
   else if (k === 'l') { if (!e.repeat && $('like').offsetParent) toggleLike(); }   // sin efecto si el botón está oculto
@@ -637,6 +669,7 @@ document.addEventListener('keyup', e => { if (e.key === ' ' && e.target.tagName 
 /** Reproduce un contexto (playlist, álbum, artista o pista) en este dispositivo. Devuelve true si Spotify aceptó la orden. */
 async function playUri(uri, ctx) {
   if (!dev) { status('El reproductor aún no está listo'); return false; }
+  useSpotify();
   let body = { context_uri: uri };
   if (uri.startsWith('spotify:track:')) {   // Una pista suelta se inicia dentro de su álbum para heredar la continuidad (autoplay) del contexto.
     if (!ctx) { try { const t = await sp('/tracks/' + uri.split(':')[2]); if (t.ok) ctx = (await t.json()).album?.uri; } catch {} }
@@ -648,6 +681,7 @@ async function playUri(uri, ctx) {
 /** Reproduce una lista de pistas empezando por `uri`, para que la reproducción continúe con las siguientes. */
 async function playTracks(list, uri) {
   if (!dev) { status('El reproductor aún no está listo'); return false; }
+  useSpotify();
   const r = await sp('/me/player/play?device_id=' + dev, 'PUT', { uris: list.slice(0, 100), offset: { uri } });
   status(r.ok ? '' : 'No se pudo reproducir (' + why(r.status, 'cmd') + ')'); return r.ok;
 }
@@ -696,7 +730,7 @@ const fill = parts => {
 };
 // Caché de pestañas: al volver a una ya cargada se muestra al instante, sin consultar de nuevo (cuida el cupo de la
 // API). Si una consulta falla (p. ej. por el límite de Spotify), se muestra lo último cargado en lugar de un error.
-const cache = {}, ttl = key => key === 'history' ? 60000 : 180000;
+const cache = {}, ttl = key => key.startsWith('history') ? 60000 : 180000;
 /** Muestra una lista cargada con éxito y la guarda para la próxima vez. */
 const keep = (key, parts) => { cache[key] = { t: Date.now(), parts }; fill(parts); };
 /** Muestra el fallo de una carga: lo último guardado con un aviso, o el error si no hay nada guardado. */
@@ -722,19 +756,53 @@ async function loadPlaylists() {
   keep('playlists', [sec('Tus playlists'), ...out.map(p => row({ name: p.name, sub: owner(p), uri: p.uri, img: img(p.images) }))]);
 }
 // El modo desarrollo limita la búsqueda a 10 resultados por consulta; se piden 10 por tipo (el máximo).
-/** Busca canciones, álbumes, artistas y playlists y arma la lista de resultados. */
-async function search(q) {
-  const r = await sp('/search?' + new URLSearchParams({ q, type: 'track,album,playlist,artist', limit: 10 }));
+// Dónde busca el buscador: 'spotify', 'youtube' o 'both' (se recuerda en esta PC).
+let searchSrc = 'both';
+try { const v = localStorage.getItem('searchSrc'); if (['spotify', 'youtube', 'both'].includes(v)) searchSrc = v; } catch {}
+const YT_SEARCH_ERR = { nokey: 'Para buscar en YouTube, agregá tu clave en Ajustes › Sistema › YouTube',
+  quota: 'Se terminó el cupo diario de búsquedas de YouTube (se renueva cada día)', net: 'Sin conexión: no se pudo buscar en YouTube' };
+/**
+ * Busca en Spotify (canciones, álbumes, artistas y playlists) y/o en YouTube (videos). Spotify busca mientras se
+ * escribe; YouTube solo con Enter (`withYt`), porque cada búsqueda gasta una parte grande del cupo diario.
+ */
+async function search(q, withYt = false) {
+  const useSp = searchSrc !== 'youtube', useYt = withYt && searchSrc !== 'spotify';
+  if (useYt) fill([note('Buscando en YouTube…')]);
+  const [r, y] = await Promise.all([useSp ? sp('/search?' + new URLSearchParams({ q, type: 'track,album,playlist,artist', limit: 10 })) : null, useYt ? bridge.ytSearch(q) : null]);
   if (tab !== 'search' || q !== $('q').value.trim()) return;   // descarta respuestas obsoletas (el usuario siguió escribiendo)
-  if (!r.ok) return fill([note('Error al buscar (' + why(r.status) + ')')]);
-  const d = await r.json(), parts = [];
-  const add = (title, o, map) => { const xs = (o?.items || []).filter(Boolean); if (xs.length) parts.push(sec(title), ...xs.map(x => row(map(x)))); };
-  add('Canciones', d.tracks, t => ({ name: t.name, sub: t.artists.map(a => a.name).join(', '), uri: t.uri, ctx: t.album?.uri, img: img(t.album?.images) }));
-  add('Álbumes', d.albums, a => ({ name: a.name, sub: a.artists.map(x => x.name).join(', '), uri: a.uri, img: img(a.images) }));
-  add('Artistas', d.artists, a => ({ name: a.name, sub: 'Artista', uri: a.uri, img: img(a.images) }));
-  add('Playlists', d.playlists, p => ({ name: p.name, sub: owner(p), uri: p.uri, img: img(p.images) }));
+  const parts = [];
+  if (y) {   // los videos van primero: es lo que se pidió con Enter
+    if (y.error) parts.push(note(YT_SEARCH_ERR[y.error] || 'No se pudo buscar en YouTube (' + (y.status || y.error) + ')'));
+    else if (y.items.length) parts.push(sec('Videos de YouTube'), ...y.items.map(v => row({ name: v.title, sub: v.channel, uri: 'youtube:' + v.id,
+      img: 'https://i.ytimg.com/vi/' + v.id + '/mqdefault.jpg', open: () => { toggleLib(false); playYt(v.id); } })));
+    else parts.push(note('YouTube: sin resultados'));
+  } else if (searchSrc !== 'spotify') parts.push(note('Apretá Enter para buscar en YouTube'));
+  if (r) {
+    if (!r.ok) parts.push(note('Error al buscar en Spotify (' + why(r.status) + ')'));
+    else {
+      const d = await r.json(), sp0 = parts.length;
+      const add = (title, o, map) => { const xs = (o?.items || []).filter(Boolean); if (xs.length) parts.push(sec(title), ...xs.map(x => row(map(x)))); };
+      add('Canciones', d.tracks, t => ({ name: t.name, sub: t.artists.map(a => a.name).join(', '), uri: t.uri, ctx: t.album?.uri, img: img(t.album?.images) }));
+      add('Álbumes', d.albums, a => ({ name: a.name, sub: a.artists.map(x => x.name).join(', '), uri: a.uri, img: img(a.images) }));
+      add('Artistas', d.artists, a => ({ name: a.name, sub: 'Artista', uri: a.uri, img: img(a.images) }));
+      add('Playlists', d.playlists, p => ({ name: p.name, sub: owner(p), uri: p.uri, img: img(p.images) }));
+      if (parts.length === sp0) parts.push(note('Spotify: sin resultados'));
+    }
+  }
   fill(parts.length ? parts : [note('Sin resultados')]);
 }
+/** Buscador vacío: tus playlists de Spotify, o una indicación si solo se busca en YouTube (sin gastar consultas). */
+const emptySearch = () => searchSrc === 'youtube' ? fill([note('Escribí y apretá Enter para buscar en YouTube')]) : loadPlaylists();
+const SRC_HINT = { spotify: 'Buscar en Spotify o pegar un link', youtube: 'Buscar en YouTube (Enter) o pegar un link', both: 'Buscar o pegar un link' };
+/** Cambia dónde busca el buscador y repite la búsqueda actual (solo la parte de Spotify; YouTube espera a Enter). */
+const paintSrc = () => { for (const b of document.querySelectorAll('#srcs button')) b.classList.toggle('on', b.dataset.s === searchSrc); $('q').placeholder = SRC_HINT[searchSrc]; };
+function setSearchSrc(v) {
+  searchSrc = v; try { localStorage.setItem('searchSrc', v); } catch {}
+  paintSrc();
+  if (tab === 'search' && !$('library').hidden) { const q = $('q').value.trim(); q ? search(q) : emptySearch(); }
+}
+for (const b of document.querySelectorAll('#srcs button')) b.onclick = () => { setSearchSrc(b.dataset.s); $('q').focus(); };
+paintSrc();
 /** Fila genérica con textContent (sin reproducir): usada por la mini ventana y la vista de artista. */
 function listRow({ name, sub, img: src, on, onclick }) {
   const li = document.createElement('li'); li.className = 'it' + (on ? ' cur' : ''); li.tabIndex = 0; li.setAttribute('role', 'button');
@@ -883,35 +951,70 @@ async function loadQueue() {
   parts.push(sec('A continuación'), ...(next.length ? next.map(t => row(map(t))) : [note('La cola está vacía')]));
   keep('queue', parts);
 }
-/** Últimas 30 reproducciones, sin repeticiones consecutivas. */
+// Videos vistos (solo en esta PC): id, título, canal y fecha. Hasta 50, el más reciente primero.
+const ytHistory = () => {
+  try {
+    const a = JSON.parse(localStorage.getItem('ytHistory') || '[]');
+    return Array.isArray(a) ? a.filter(v => /^[\w-]{11}$/.test(v?.id) && typeof v.title === 'string' && Number.isFinite(v.at)).slice(0, 50) : [];
+  } catch { return []; }
+};
+function addYtHistory(id, title, channel) {
+  const a = ytHistory().filter(v => v.id !== id);   // si ya estaba, sube al principio
+  a.unshift({ id, title: String(title).slice(0, 200), channel: String(channel || '').slice(0, 100), at: Date.now() });
+  try { localStorage.setItem('ytHistory', JSON.stringify(a.slice(0, 50))); } catch {}
+  delete cache['history:youtube']; delete cache['history:both'];
+}
+const ytRow = v => row({ name: v.title, sub: v.channel, uri: 'youtube:' + v.id, img: 'https://i.ytimg.com/vi/' + v.id + '/mqdefault.jpg', open: () => { toggleLib(false); playYt(v.id); } });
+// Qué muestra Recientes: 'spotify' (canciones), 'youtube' (videos) o 'both' (mezcla). Se recuerda en esta PC.
+let histSrc = 'both';
+try { const v = localStorage.getItem('histSrc'); if (['spotify', 'youtube', 'both'].includes(v)) histSrc = v; } catch {}
+const paintHist = () => { for (const b of document.querySelectorAll('#hsrc button')) b.classList.toggle('on', b.dataset.h === histSrc); };
+paintHist();
+for (const b of document.querySelectorAll('#hsrc button')) b.onclick = () => {
+  histSrc = b.dataset.h; try { localStorage.setItem('histSrc', histSrc); } catch {}
+  paintHist(); setTab('history');
+};
+/** Recientes: canciones de Spotify (últimas 30, sin repeticiones seguidas), videos vistos o ambas mezcladas por fecha. */
 async function loadHistory() {
+  const key = 'history:' + histSrc, vids = histSrc !== 'spotify' ? ytHistory() : [];
+  if (histSrc === 'youtube') return keep(key, vids.length ? [sec('Videos recientes'), ...vids.map(ytRow)] : [note('Todavía no viste videos')]);   // sin consultar a Spotify
   fill([note('Cargando…')]);
-  const r = await sp('/me/player/recently-played?limit=30'); if (tab !== 'history') return;
-  if (!r.ok) return failed('history', 'el historial', r.status);
+  const r = await sp('/me/player/recently-played?limit=30'); if (tab !== 'history' || key !== 'history:' + histSrc) return;
+  if (!r.ok) return failed(key, 'el historial', r.status);
   const items = (await r.json()).items || [], seen = [];
-  for (const it of items) { const t = it.track; if (t && seen[seen.length - 1]?.uri !== t.uri) seen.push(t); }   // quita repeticiones consecutivas
-  keep('history', seen.length ? [sec('Escuchado recientemente'), ...seen.map(t => row({ name: t.name, sub: t.artists.map(a => a.name).join(', '), uri: t.uri, ctx: t.album?.uri, img: img(t.album?.images) }))] : [note('Todavía no hay historial')]);
+  for (const it of items) { const t = it.track; if (t && seen[seen.length - 1]?.t.uri !== t.uri) seen.push({ t, at: Date.parse(it.played_at) || 0 }); }   // quita repeticiones consecutivas
+  const songRow = ({ t }) => row({ name: t.name, sub: t.artists.map(a => a.name).join(', '), uri: t.uri, ctx: t.album?.uri, img: img(t.album?.images) });
+  if (histSrc === 'spotify') return keep(key, seen.length ? [sec('Canciones recientes'), ...seen.map(songRow)] : [note('Todavía no hay historial')]);
+  const mix = [...seen.map(s => ({ at: s.at, el: () => songRow(s) })), ...vids.map(v => ({ at: v.at, el: () => ytRow(v) }))].sort((a, b) => b.at - a.at).slice(0, 40);
+  keep(key, mix.length ? [sec('Escuchado y visto recientemente'), ...mix.map(m => m.el())] : [note('Todavía no hay historial')]);
 }
 /** Cambia de pestaña en la biblioteca y carga su contenido. */
 function setTab(t) {
   quiet = false; tab = t; for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.t === t);
-  $('q').hidden = t !== 'search'; $('ranges').hidden = t !== 'top';
+  $('q').hidden = $('srcs').hidden = t !== 'search'; $('ranges').hidden = t !== 'top'; $('hsrc').hidden = t !== 'history';
   if (t === 'search') $('q').focus();
   // La cola cambia con cada pista: siempre se pide. Las demás se reutilizan mientras la copia guardada sea reciente.
-  const key = t === 'liked' ? 'liked' : t === 'top' ? 'top:' + topRange : t === 'coll' ? 'coll' : t === 'history' ? 'history' : t === 'search' && !$('q').value.trim() ? 'playlists' : null;
+  const key = t === 'liked' ? 'liked' : t === 'top' ? 'top:' + topRange : t === 'coll' ? 'coll' : t === 'history' ? 'history:' + histSrc : t === 'search' && !$('q').value.trim() && searchSrc !== 'youtube' ? 'playlists' : null;
   const c = key && cache[key]; if (c && Date.now() - c.t < ttl(key)) return fill(c.parts);
-  if (t === 'search') $('q').value.trim() ? search($('q').value.trim()) : loadPlaylists();
+  if (t === 'search') $('q').value.trim() ? search($('q').value.trim()) : emptySearch();
   else if (t === 'liked') loadLiked(); else if (t === 'top') loadTop(); else if (t === 'coll') loadColl(); else if (t === 'queue') loadQueue(); else loadHistory();
 }
 for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => setTab(b.dataset.t);
 let timer;
-$('q').oninput = () => { clearTimeout(timer); const q = $('q').value.trim(); timer = setTimeout(() => q ? search(q) : loadPlaylists(), 350); };
+$('q').oninput = () => { clearTimeout(timer); const q = $('q').value.trim(); timer = setTimeout(() => q ? search(q) : emptySearch(), 350); };
 $('q').onkeydown = async e => {
-  const m = e.key === 'Enter' && $('q').value.match(LINK);
-  if (m && await playUri(`spotify:${m[1]}:${m[2]}`)) toggleLib(false);
+  if (e.key !== 'Enter') return;
+  const y = $('q').value.match(YTID);
+  if (y) { toggleLib(false); return playYt(y[1]); }
+  const m = $('q').value.match(LINK);
+  if (m) { if (await playUri(`spotify:${m[1]}:${m[2]}`)) toggleLib(false); return; }
+  const q = $('q').value.trim();
+  if (q && searchSrc !== 'spotify') { clearTimeout(timer); search(q, true); }   // Enter: también busca en YouTube
 };
 /** Muestra u oculta la vista de biblioteca (reemplaza a la vista del reproductor mientras está abierta). */
 function toggleLib(open = $('library').hidden) {
+  // La biblioteca ocupa el lugar del reproductor: un video de YouTube se pausa (nunca se oculta mientras suena).
+  if (open && src === 'youtube' && ytReady && yt.getPlayerState() === 1) { yt.pauseVideo(); status('Video en pausa mientras buscás'); }
   $('library').hidden = !open; $('now').hidden = open; $('player').classList.toggle('lib', open); $('libbtn').classList.toggle('on', open);
   if (open) { $('q').value = ''; setTab('search'); } else syncRemote();   // al volver al reproductor se refresca el estado
 }
@@ -926,6 +1029,141 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (!$('pick').hidden) togglePick(false); else if (!$('devs').hidden) toggleDevices(false); else if (!$('library').hidden) toggleLib(false);
 });
+
+// ---------- YouTube ----------
+// Un enlace de YouTube pegado (Ctrl+V o en el buscador) se reproduce con el reproductor oficial embebido, que ocupa el
+// recuadro de la portada. Reglas: nunca se tapa, oculta ni modifica el reproductor, no se intenta evitar anuncios y,
+// mientras suena YouTube, no se consulta la API de Spotify de forma periódica. Los videos pegados forman una lista
+// local para Anterior/Siguiente (sin API de YouTube ni inicio de sesión obligatorio).
+const YT_ERR = { 2: 'el enlace no es válido', 5: 'falló el reproductor', 100: 'el video no existe o es privado',
+  101: 'el dueño no permite verlo fuera de YouTube', 150: 'el dueño no permite verlo fuera de YouTube', 153: 'YouTube rechazó el origen' };
+/** Carga la API oficial del reproductor una sola vez. */
+const loadYtApi = () => ytApi ??= new Promise((ok, no) => {
+  window.onYouTubeIframeAPIReady = ok;
+  const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api';
+  s.onerror = () => { ytApi = null; s.remove(); no(new Error('sin conexión')); };
+  document.head.append(s);
+});
+/** Ancho de diseño y escala mínima: con YouTube el reproductor debe verse de al menos 200 px de alto. */
+const reportWidth = () => {
+  const v = $('player').classList.contains('video');
+  bridge.setLayoutWidth?.(v ? 384 : 280, src === 'youtube' ? (v ? 1 : .84) : 0);
+};
+/** Pasa a YouTube: pausa Spotify (por el SDK, sin la Web API) y muestra el reproductor en la portada. */
+function useYoutube() {
+  if (src !== 'youtube') { src = 'youtube'; if (st && !st.paused) player?.pause()?.catch?.(() => {}); }
+  document.body.classList.add('yt'); $('ytbox').hidden = false;
+  if (!$('devs').hidden) toggleDevices(false);
+  if (!$('pick').hidden) togglePick(false);
+  if (!$('library').hidden) toggleLib(false);
+  reportWidth();
+}
+/** Vuelve a Spotify: pausa el video y quita el reproductor de la portada (la portada se vuelve a cargar). */
+function useSpotify() {
+  if (src !== 'youtube') return;
+  src = 'spotify'; if (ytReady) yt.pauseVideo();
+  $('ytbox').hidden = true; document.body.classList.remove('yt'); lastCover = ''; status(''); reportWidth();
+}
+/** Reproduce un video por su ID y lo agrega al final de la lista local. */
+async function playYt(id) {
+  ytList.push(id); ytIdx = ytList.length - 1; ytId = id;
+  useYoutube(); status('Cargando video…');
+  try { await loadYtApi(); } catch { return status('No se pudo cargar YouTube (¿sin conexión?)'); }
+  if (!yt) yt = new YT.Player('yt', { width: '100%', height: '100%', videoId: id,
+    playerVars: { origin: location.origin, playsinline: 1, rel: 0 },
+    events: { onReady: ytOnReady, onStateChange: ytOnState, onError: e => status('No disponible: ' + (YT_ERR[e.data] || 'error ' + e.data), 8000),
+      onPlaybackRateChange: e => $('rate').textContent = e.data + '×' } });
+  else if (ytReady) yt.loadVideoById(id);
+}
+function ytOnReady() {
+  ytReady = true; yt.setVolume(+$('vol').value);
+  if (yt.getVideoData()?.video_id !== ytId) yt.loadVideoById(ytId); else yt.playVideo();
+}
+function ytOnState(e) {
+  if (src !== 'youtube') return;
+  for (const p of document.querySelectorAll('.pp svg')) p.innerHTML = e.data === 1 ? ICON.pause : ICON.play;
+  if (e.data === 1) status('');
+  if (e.data === 1 || e.data === 5 || e.data === -1) ytMeta();
+  if (e.data === 0) ytStep(1);   // terminó: sigue con el próximo video pegado (si hay)
+}
+/** Título, canal, miniatura (color del tema y aviso de canción nueva) del video actual. */
+async function ytMeta() {
+  const d = yt.getVideoData() || {}, id = d.video_id; if (!d.title || !id) return;
+  $('title').textContent = d.title; $('artist').textContent = d.author || 'YouTube';
+  bridge.nowPlaying?.(d.title, $('artist').textContent);
+  const uri = 'youtube:' + id; if (uri === curUri) return;
+  const changed = !!curUri; curUri = uri; $('like').hidden = true; addYtHistory(id, d.title, $('artist').textContent);
+  const url = 'https://i.ytimg.com/vi/' + id + '/mqdefault.jpg'; lastCover = url;
+  const data = await bridge.cover(url); if (lastCover !== url) return;
+  if (data) {
+    coverData = data; setCover(data);
+    await new Promise(done => { const im = new Image(); im.onload = () => { if (url === lastCover) tint(im); done(); }; im.onerror = done; im.src = data; });
+  }
+  if (changed && lastCover === url) announce({ name: d.title, artists: [{ name: $('artist').textContent }] }, data || '');
+}
+const ytToggle = () => { if (ytReady) yt.getPlayerState() === 1 ? yt.pauseVideo() : yt.playVideo(); };
+/** Avanza o retrocede en la lista local de videos pegados. */
+function ytStep(n) {
+  const i = ytIdx + n; if (!ytReady || i < 0 || i >= ytList.length) return;
+  ytIdx = i; ytId = ytList[i]; yt.loadVideoById(ytId);
+}
+// Anterior: igual que con Spotify, pasados 4 s reinicia el video.
+const ytPrev = () => { if (ytReady && yt.getCurrentTime() > RESTART_MS / 1000) yt.seekTo(0, true); else ytStep(-1); };
+// Velocidad de reproducción (la calidad y los subtítulos quedan en el engranaje del propio reproductor).
+const RATES = [1, 1.25, 1.5, 2, .5, .75];
+$('rate').onclick = () => { if (ytReady) yt.setPlaybackRate(RATES[(RATES.indexOf(yt.getPlaybackRate()) + 1) % RATES.length]); };
+// Al terminar el inicio de sesión de Google se recarga el video para que tome la cuenta.
+bridge.onYtLogin?.(() => { status('Sesión de Google iniciada'); if (ytReady && ytId) yt.loadVideoById(ytId, yt.getCurrentTime()); });
+
+// ---------- Modo video ----------
+// Ventana más ancha (384 px de diseño) con la pantalla 16:9 arriba y los controles abajo. Funciona con YouTube y con
+// Spotify (la portada se centra con la misma portada difuminada a los costados). Volver al modo música es un clic.
+function setVideo(on) {
+  if (on && !$('library').hidden) toggleLib(false);
+  if (!on) setSolo(false);
+  $('player').classList.toggle('video', on); designW = on ? 384 : 280; fitScale(); reportWidth();
+}
+$('vidbtn').onclick = () => setVideo(true);
+$('toMusic').onclick = () => setVideo(false);
+// Solo video: se quita todo menos el video (para dejarlo a un costado sin menús). Se vuelve con el botón de abajo o Esc.
+function setSolo(on) {
+  $('player').classList.toggle('solo', on);
+  if (on) { if (!$('library').hidden) toggleLib(false); if (!$('devs').hidden) toggleDevices(false); }
+}
+$('solo').onclick = () => setSolo(true);
+$('soloOff').onclick = () => setSolo(false);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('player').classList.contains('solo')) { e.stopImmediatePropagation(); setSolo(false); } }, true);
+
+// Tamaño del modo video a gusto: arrastrando cualquier borde o esquina. Solo cambia la escala (el video conserva su
+// proporción); el proceso principal mantiene fijo el borde opuesto y guarda el tamaño para la próxima vez.
+const EDGE = 8;
+let rz = null, rzPend = null, rzFrame = 0;
+const edgeAt = e => {
+  if (!$('player').classList.contains('video')) return '';
+  const v = e.clientY < EDGE ? 'n' : e.clientY > innerHeight - EDGE ? 's' : '', h = e.clientX < EDGE ? 'w' : e.clientX > innerWidth - EDGE ? 'e' : '';
+  return v + h;
+};
+document.addEventListener('pointerdown', e => {
+  const k = e.button === 0 && edgeAt(e); if (!k) return;
+  e.stopImmediatePropagation(); e.preventDefault();   // no es un arrastre de ventana
+  rz = { k, x: e.screenX, y: e.screenY, w: innerWidth, h: innerHeight };
+  e.target.setPointerCapture(e.pointerId); bridge.resizeStart?.();
+}, true);
+document.addEventListener('pointermove', e => {
+  if (!rz) { const k = edgeAt(e); if (document.documentElement.dataset.rz !== k) document.documentElement.dataset.rz = k; return; }
+  const gw = rz.k.includes('e') ? e.screenX - rz.x : rz.k.includes('w') ? rz.x - e.screenX : null;
+  const gh = rz.k.includes('s') ? e.screenY - rz.y : rz.k.includes('n') ? rz.y - e.screenY : null;
+  const fw = gw === null ? 0 : (rz.w + gw) / rz.w, fh = gh === null ? 0 : (rz.h + gh) / rz.h;
+  rzPend = rz.w / 384 * Math.max(fw, fh);
+  rzFrame ||= requestAnimationFrame(() => { rzFrame = 0; if (rz && rzPend) bridge.resizeVideo?.(rzPend, rz.k.includes('w'), rz.k.includes('n')); });
+});
+const rzEnd = () => { if (rz) { rz = null; bridge.resizeEnd?.(); } };
+document.addEventListener('pointerup', rzEnd);
+document.addEventListener('pointercancel', rzEnd);
+document.documentElement.addEventListener('pointerleave', () => { if (!rz) document.documentElement.dataset.rz = ''; });
+$('vPlay').onclick = togglePlayback;
+$('vPrev').onclick = goPrev;
+$('vNext').onclick = goNext;
 
 // ---------- Aviso de actualización ----------
 /** Consulta (vía el proceso principal) si hay una versión nueva y, de haberla, muestra el aviso con su botón. */
