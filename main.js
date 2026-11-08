@@ -385,6 +385,49 @@ ipcMain.on('announce', (e, d) => {
     bg: bgOk(d?.bg) ? d.bg : '#2a2060', fg: ['#fff', '#16181d'].includes(d?.fg) ? d.fg : '#fff',
     accent: accentOk(d?.accent) ? d.accent : 'rgb(255 255 255)' });
 });
+// ---------- Listas propias: exportar e importar archivos .txt ----------
+// Formato de texto plano, legible y editable a mano:
+//   MINIPLAYER-PLAYLIST 1
+//   Nombre: Para el viaje
+//   spotify:track:<22 caracteres> | Título | Artista
+//   youtube:<11 caracteres> | Título | Canal
+// Un archivo importado es siempre dato no confiable: se lee como texto (máximo 256 KB), cada línea debe cumplir un
+// patrón estricto, se quitan los caracteres de control y de inversión de texto, se limitan largos y cantidad (500) y
+// las líneas inválidas se descartan y se cuentan. El archivo no puede traer URLs ni imágenes: las miniaturas se arman
+// desde el ID. La interfaz muestra todo con textContent.
+const LIST_HEAD = 'MINIPLAYER-PLAYLIST 1', LIST_MAX = 500, LIST_BYTES = 256 * 1024;
+const LIST_ID = { spotify: /^[A-Za-z0-9]{22}$/, youtube: /^[\w-]{11}$/ };
+const listTxt = (t, n) => String(t ?? '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, '').replace(/\|/g, '/').trim().slice(0, n);
+/** Convierte el texto de un archivo de lista en { name, items, skipped } o { error }. */
+function parseList(text) {
+  const lines = String(text).split(/\r\n|\n|\r/).map(l => l.trim()).filter(Boolean);
+  if (lines[0]?.replace(/^﻿/, '') !== LIST_HEAD) return { error: 'format' };
+  let name = '', skipped = 0; const items = [];
+  for (const l of lines.slice(1)) {
+    if (!name && /^Nombre:/i.test(l)) { name = listTxt(l.slice(7), 60); continue; }
+    const m = l.length <= 600 && l.match(/^(?:spotify:track:([A-Za-z0-9]{22})|youtube:([\w-]{11}))\s*(?:\|([^|]*))?(?:\|([^|]*))?$/);
+    if (!m || items.length >= LIST_MAX) { skipped++; continue; }
+    items.push({ k: m[1] ? 'spotify' : 'youtube', id: m[1] || m[2], title: listTxt(m[3], 200), sub: listTxt(m[4], 200) });
+  }
+  return { name, items, skipped };
+}
+ipcMain.handle('list:export', async (e, name, items) => {
+  if (e.sender !== win?.webContents || !Array.isArray(items) || !items.length || items.length > LIST_MAX) return { error: 'bad' };
+  const title = listTxt(name, 60) || 'Lista';
+  const lines = items.filter(x => LIST_ID[x?.k]?.test(x.id)).map(x => (x.k === 'spotify' ? 'spotify:track:' : 'youtube:') + x.id + ' | ' + listTxt(x.title, 200) + ' | ' + listTxt(x.sub, 200));
+  const r = await dialog.showSaveDialog(win, { title: 'Exportar lista', defaultPath: title.replace(/[\\/:*?"<>]/g, '_') + '.txt', filters: [{ name: 'Lista de Mini Player', extensions: ['txt'] }] });
+  if (r.canceled || !r.filePath) return null;
+  try { fs.writeFileSync(r.filePath, [LIST_HEAD, 'Nombre: ' + title, ...lines, ''].join('\n'), 'utf8'); return { ok: true }; } catch { return { error: 'write' }; }
+});
+ipcMain.handle('list:import', async e => {
+  if (e.sender !== win?.webContents) return { error: 'bad' };
+  const r = await dialog.showOpenDialog(win, { title: 'Importar lista', properties: ['openFile'], filters: [{ name: 'Lista de Mini Player', extensions: ['txt'] }] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  try {
+    if (fs.statSync(r.filePaths[0]).size > LIST_BYTES) return { error: 'big' };
+    return parseList(fs.readFileSync(r.filePaths[0], 'utf8'));
+  } catch { return { error: 'read' }; }
+});
 ipcMain.handle('settings:get', () => settings);
 ipcMain.handle('settings:set', (e, partial) => applySettings({ ...settings, ...sanitize(partial) }));
 ipcMain.handle('settings:reset', () => applySettings({ ...DEFAULTS, layoutH: settings.layoutH }));

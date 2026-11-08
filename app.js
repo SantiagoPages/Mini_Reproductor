@@ -32,6 +32,8 @@ const ICON = { play: '<path d="M8 5v14l11-7z"/>', pause: '<path d="M6 5h4v14H6zM
 let S = { cid: '', rt: '', at: '', exp: 0 }, ver, state, player, dev, st, t0 = 0, lastCover = '';
 // Fuente de lo que suena ('spotify' o 'youtube') y estado del reproductor de YouTube (ver la sección YouTube).
 let src = 'spotify', yt = null, ytReady = false, ytApi = null, ytList = [], ytIdx = -1, ytId = '';
+// Lista propia que está sonando ({ l, i, uri, started, ending }) y lista abierta en la pestaña Listas (ver «Listas propias»).
+let listPlay = null, openListId = null;
 // Enlace de YouTube (video, shorts, embed, live o youtu.be) con su ID de 11 caracteres.
 const YTID = /(?:youtube\.com\/(?:watch\?(?:[^#\s]*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/;
 
@@ -113,7 +115,11 @@ function start() {
     // hacerlo le quitaría el audio al dispositivo que el usuario esté usando.
     player.addListener('ready', ({ device_id }) => { dev = device_id; status(''); });
     ['initialization_error', 'authentication_error', 'account_error', 'playback_error'].forEach(e => player.addListener(e, ({ message }) => status(message)));
-    player.addListener('player_state_changed', s => { st = s; t0 = performance.now(); render(); });
+    player.addListener('player_state_changed', s => {
+      const prev = st, prevT0 = t0; st = s; t0 = performance.now();
+      if (listPlay && src === 'spotify') checkListEnd(prev, prevT0, s);   // ¿terminó la canción de la lista?
+      render();
+    });
     status('Conectando…');
     setTimeout(() => { if (!dev) status('Spotify no respondió. ¿Premium activo?'); }, 10000);
     player.connect();
@@ -464,6 +470,8 @@ $('play').onclick = togglePlayback;
 // Anterior: si la pista ya lleva más de 4 s, se reinicia en vez de volver a la anterior (como en la app de Spotify).
 const RESTART_MS = 4000;
 function goPrev() {
+  // En una lista: pasados 4 s (o en el primer elemento) vuelve al principio; si no, al elemento anterior.
+  if (listPlay) return curPos() > RESTART_MS || listPlay.i === 0 ? seekStart() : listStep(-1);
   if (src === 'youtube') return ytPrev();
   if (!player) return;
   const pos = st ? (st.paused ? st.position : st.position + performance.now() - t0) : 0;
@@ -471,7 +479,7 @@ function goPrev() {
 }
 $('prev').onclick = goPrev;
 /** Siguiente: en YouTube, el próximo video pegado; en Spotify, la pista siguiente. */
-function goNext() { if (src === 'youtube') return ytStep(1); player?.nextTrack(); }
+function goNext() { if (listStep(1)) return; if (src === 'youtube') return ytStep(1); player?.nextTrack(); }
 $('next').onclick = goNext;
 // Barra de progreso: arrastre con captura de puntero; el seek se ejecuta al soltar para no generar saltos de audio.
 const ratio = e => { const r = $('track').getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
@@ -524,7 +532,7 @@ async function syncLike(uri) {
 }
 /** Guarda o quita la pista actual de Me gusta (tecla L y fila "Canciones que te gustan" de la mini ventana). */
 async function toggleLike() {
-  if (busy || !curUri) return; busy = true; likeTouched = Date.now(); const want = !liked; paintLike(want);
+  if (busy || !curUri.startsWith('spotify:track:')) return; busy = true; likeTouched = Date.now(); const want = !liked; paintLike(want);
   const r = await sp('/me/library?uris=' + encodeURIComponent(curUri), want ? 'PUT' : 'DELETE');
   if (!r.ok) { paintLike(!want); status('No se pudo guardar (' + why(r.status) + ')'); }
   delete cache.liked; busy = false; if (!$('pick').hidden) paintPickLike();   // la lista de Me gusta guardada quedó vieja
@@ -669,7 +677,7 @@ document.addEventListener('keyup', e => { if (e.key === ' ' && e.target.tagName 
 /** Reproduce un contexto (playlist, álbum, artista o pista) en este dispositivo. Devuelve true si Spotify aceptó la orden. */
 async function playUri(uri, ctx) {
   if (!dev) { status('El reproductor aún no está listo'); return false; }
-  useSpotify();
+  listPlay = null; useSpotify();
   let body = { context_uri: uri };
   if (uri.startsWith('spotify:track:')) {   // Una pista suelta se inicia dentro de su álbum para heredar la continuidad (autoplay) del contexto.
     if (!ctx) { try { const t = await sp('/tracks/' + uri.split(':')[2]); if (t.ok) ctx = (await t.json()).album?.uri; } catch {} }
@@ -679,8 +687,9 @@ async function playUri(uri, ctx) {
   status(r.ok ? '' : 'No se pudo reproducir (' + why(r.status, 'cmd') + ')'); return r.ok;
 }
 /** Reproduce una lista de pistas empezando por `uri`, para que la reproducción continúe con las siguientes. */
-async function playTracks(list, uri) {
+async function playTracks(list, uri, keepList = false) {
   if (!dev) { status('El reproductor aún no está listo'); return false; }
+  if (!keepList) listPlay = null;
   useSpotify();
   const r = await sp('/me/player/play?device_id=' + dev, 'PUT', { uris: list.slice(0, 100), offset: { uri } });
   status(r.ok ? '' : 'No se pudo reproducir (' + why(r.status, 'cmd') + ')'); return r.ok;
@@ -701,11 +710,13 @@ function row(o) {
   tx.append(b, s); li.append(th, tx);
   if (o.plain) { li.classList.add('plain'); return li; }   // filas informativas (cola): sin acción al hacer clic
   li.tabIndex = 0; li.setAttribute('role', 'button');
-  // Botón "+": agrega la pista a la cola sin interrumpir lo que suena.
-  if (o.uri.startsWith('spotify:track:')) {
-    const q = document.createElement('button'); q.className = 'btn mini qb'; q.title = 'Agregar a la cola';
+  // Botón "+": abre «Agregar a…» (tus listas, una lista nueva o la cola de Spotify) sin interrumpir lo que suena.
+  const isYt = o.uri.startsWith('youtube:');
+  if (o.uri.startsWith('spotify:track:') || isYt) {
+    const q = document.createElement('button'); q.className = 'btn mini qb'; q.title = 'Agregar a…';
     q.innerHTML = '<svg viewBox="0 0 24 24">' + ICON.plus + '</svg>';
-    q.onclick = e => { e.stopPropagation(); addToQueue(o.uri, q); };
+    const item = cleanItem({ k: isYt ? 'youtube' : 'spotify', id: o.uri.split(':').pop(), title: o.name, sub: o.sub, img: o.img });
+    q.onclick = e => { e.stopPropagation(); togglePick(true, item, q); };
     li.append(q);
   }
   const go = o.open || (async () => { if (await (o.list ? playTracks(o.list, o.uri) : playUri(o.uri, o.ctx))) toggleLib(false); });
@@ -853,14 +864,26 @@ async function addToPlaylist(p, li) {
   status('Agregada a «' + p.name + '»'); setTimeout(() => { status(''); togglePick(false); }, 900);
 }
 /** Muestra u oculta la mini ventana. Se cierra sola si cambia la pista. */
-async function togglePick(open = $('pick').hidden) {
-  if (open && !curUri.startsWith('spotify:track:')) open = false;
+/**
+ * Menú «Agregar a…». Sin `item` es lo que suena (botón + del título): Me gusta, tus listas y tus playlists de Spotify.
+ * Con `item` es una fila de resultados: tus listas, una lista nueva y la cola de Spotify (solo canciones).
+ */
+async function togglePick(open = $('pick').hidden, item = null, qbtn = null) {
+  const cur = !item; item ??= curItem();
+  if (open && !item) open = false;
   $('pick').hidden = !open; $('like').classList.toggle('on', open || liked);
   if (!open) return;
   if (!$('devs').hidden) toggleDevices(false);
+  // El menú queda encima de la portada: un video que suena se pausa (el reproductor de YouTube nunca se tapa sonando).
+  if (src === 'youtube' && ytReady && yt.getPlayerState() === 1 && $('library').hidden) yt.pauseVideo();
+  const own = addListRows(item);
+  if (!cur || item.k !== 'spotify') {
+    const extra = !cur && item.k === 'spotify' ? [sec('Spotify'), listRow({ name: 'Cola de Spotify', sub: 'Suena después de lo actual', onclick: () => { addToQueue(itemUri(item), qbtn); togglePick(false); } })] : [];
+    return $('picklist').replaceChildren(...own, ...extra);
+  }
   const uri = curUri;
   const likeRow = listRow({ name: 'Canciones que te gustan', sub: '', onclick: toggleLike }); likeRow.dataset.like = '1';
-  $('picklist').replaceChildren(likeRow, note('Cargando tus playlists…')); paintPickLike(); likeRow.focus();
+  $('picklist').replaceChildren(likeRow, ...own, sec('Playlists de Spotify'), note('Cargando tus playlists…')); paintPickLike(); likeRow.focus();
   let rows;
   try {
     const pls = await editablePlaylists(); if ($('pick').hidden || uri !== curUri) return;
@@ -869,7 +892,7 @@ async function togglePick(open = $('pick').hidden) {
     if ($('pick').hidden || uri !== curUri) return;
     rows = [note('No se pudieron cargar tus playlists (' + why(s) + ')')];
   }
-  $('picklist').replaceChildren(likeRow, ...rows);
+  $('picklist').replaceChildren(likeRow, ...addListRows(item), sec('Playlists de Spotify'), ...rows);
 }
 $('pickx').onclick = () => togglePick(false);
 
@@ -997,6 +1020,7 @@ function setTab(t) {
   const key = t === 'liked' ? 'liked' : t === 'top' ? 'top:' + topRange : t === 'coll' ? 'coll' : t === 'history' ? 'history:' + histSrc : t === 'search' && !$('q').value.trim() && searchSrc !== 'youtube' ? 'playlists' : null;
   const c = key && cache[key]; if (c && Date.now() - c.t < ttl(key)) return fill(c.parts);
   if (t === 'search') $('q').value.trim() ? search($('q').value.trim()) : emptySearch();
+  else if (t === 'lists') loadLists();
   else if (t === 'liked') loadLiked(); else if (t === 'top') loadTop(); else if (t === 'coll') loadColl(); else if (t === 'queue') loadQueue(); else loadHistory();
 }
 for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => setTab(b.dataset.t);
@@ -1065,15 +1089,33 @@ function useSpotify() {
   $('ytbox').hidden = true; document.body.classList.remove('yt'); lastCover = ''; status(''); reportWidth();
 }
 /** Reproduce un video por su ID y lo agrega al final de la lista local. */
-async function playYt(id) {
+async function playYt(id, keepList = false) {
+  if (!keepList) listPlay = null;
   ytList.push(id); ytIdx = ytList.length - 1; ytId = id;
   useYoutube(); status('Cargando video…');
   try { await loadYtApi(); } catch { return status('No se pudo cargar YouTube (¿sin conexión?)'); }
   if (!yt) yt = new YT.Player('yt', { width: '100%', height: '100%', videoId: id,
     playerVars: { origin: location.origin, playsinline: 1, rel: 0 },
-    events: { onReady: ytOnReady, onStateChange: ytOnState, onError: e => status('No disponible: ' + (YT_ERR[e.data] || 'error ' + e.data), 8000),
+    events: { onReady: ytOnReady, onStateChange: ytOnState, onError: ytOnError,
       onPlaybackRateChange: e => $('rate').textContent = e.data + '×' } });
   else if (ytReady) yt.loadVideoById(id);
+}
+/**
+ * Un video que no se puede reproducir (por ejemplo, el dueño no permite verlo fuera de YouTube). Dentro de una lista,
+ * a los 10 s pasa solo al siguiente elemento, con la cuenta regresiva en el aviso; se cancela si mientras tanto se
+ * elige otra cosa (Siguiente, Anterior o cualquier otro elemento).
+ */
+let skipTimer;
+function ytOnError(e) {
+  const why = YT_ERR[e.data] || 'error ' + e.data; clearInterval(skipTimer);
+  if (!listPlay) return status('No disponible: ' + why, 8000);
+  const lp = listPlay; let n = 10;
+  const tick = () => {
+    if (listPlay !== lp) return clearInterval(skipTimer);   // ya se eligió otra cosa
+    if (n === 0) { clearInterval(skipTimer); return listStep(1); }
+    status('Sigue en ' + n-- + ' s · no disponible: ' + why);   // la cuenta va primero: el aviso es de una línea
+  };
+  tick(); skipTimer = setInterval(tick, 1000);
 }
 function ytOnReady() {
   ytReady = true; yt.setVolume(+$('vol').value);
@@ -1084,7 +1126,7 @@ function ytOnState(e) {
   for (const p of document.querySelectorAll('.pp svg')) p.innerHTML = e.data === 1 ? ICON.pause : ICON.play;
   if (e.data === 1) status('');
   if (e.data === 1 || e.data === 5 || e.data === -1) ytMeta();
-  if (e.data === 0) ytStep(1);   // terminó: sigue con el próximo video pegado (si hay)
+  if (e.data === 0) { if (listPlay) listStep(1); else ytStep(1); }   // terminó: sigue la lista, o el próximo video pegado
 }
 /** Título, canal, miniatura (color del tema y aviso de canción nueva) del video actual. */
 async function ytMeta() {
@@ -1092,7 +1134,7 @@ async function ytMeta() {
   $('title').textContent = d.title; $('artist').textContent = d.author || 'YouTube';
   bridge.nowPlaying?.(d.title, $('artist').textContent);
   const uri = 'youtube:' + id; if (uri === curUri) return;
-  const changed = !!curUri; curUri = uri; $('like').hidden = true; addYtHistory(id, d.title, $('artist').textContent);
+  const changed = !!curUri; curUri = uri; $('like').hidden = false; paintLike(false); $('like').title = 'Agregar a una lista'; addYtHistory(id, d.title, $('artist').textContent);
   const url = 'https://i.ytimg.com/vi/' + id + '/mqdefault.jpg'; lastCover = url;
   const data = await bridge.cover(url); if (lastCover !== url) return;
   if (data) {
@@ -1164,6 +1206,177 @@ document.documentElement.addEventListener('pointerleave', () => { if (!rz) docum
 $('vPlay').onclick = togglePlayback;
 $('vPrev').onclick = goPrev;
 $('vNext').onclick = goNext;
+
+// ---------- Listas propias (canciones de Spotify y videos de YouTube mezclados) ----------
+// Se guardan en esta PC (localStorage): hasta 50 listas de 500 elementos. Cada elemento es { k: 'spotify'|'youtube', id,
+// title, sub, img? }; la imagen solo se guarda para Spotify (CDN de Spotify) y la de YouTube se arma desde el ID. Al
+// reproducir una lista, Siguiente/Anterior la recorren y, al terminar el último elemento, se frena con «Fin de la lista».
+// Cada canción de Spotify que empieza es un solo pedido a la API; el final se detecta con los avisos del SDK (sin red).
+const LIST_MAX = 500, LISTS_MAX = 50;
+const ID_OK = { spotify: /^[A-Za-z0-9]{22}$/, youtube: /^[\w-]{11}$/ };
+const cleanTxt = (t, n) => String(t ?? '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, '').trim().slice(0, n);
+const cleanItem = x => x && ID_OK[x.k]?.test(x.id) ? { k: x.k, id: x.id, title: cleanTxt(x.title, 200) || 'Sin título', sub: cleanTxt(x.sub, 200),
+  ...(x.k === 'spotify' && typeof x.img === 'string' && x.img.startsWith('https://i.scdn.co/image/') ? { img: x.img } : {}) } : null;
+let lists = [];
+try {
+  const a = JSON.parse(localStorage.getItem('lists') || '[]');
+  if (Array.isArray(a)) lists = a.filter(l => l && typeof l.id === 'string').slice(0, LISTS_MAX)
+    .map(l => ({ id: l.id.slice(0, 20), name: cleanTxt(l.name, 60) || 'Sin nombre', items: (Array.isArray(l.items) ? l.items : []).map(cleanItem).filter(Boolean).slice(0, LIST_MAX) }));
+} catch {}
+const saveLists = () => { try { localStorage.setItem('lists', JSON.stringify(lists)); } catch { status('No se pudieron guardar las listas', 6000); } };
+function newList(name) {
+  if (lists.length >= LISTS_MAX) { status('Llegaste al máximo de ' + LISTS_MAX + ' listas', 6000); return null; }
+  const l = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: cleanTxt(name, 60) || 'Nueva lista', items: [] };
+  lists.push(l); saveLists(); return l;
+}
+function addToList(l, item) {
+  if (l.items.length >= LIST_MAX) { status('«' + l.name + '» llegó al máximo de ' + LIST_MAX, 6000); return false; }
+  l.items.push(item); saveLists();
+  if (tab === 'lists' && openListId === l.id && !$('library').hidden) showList(l, false, true);
+  return true;
+}
+const itemImg = x => x.k === 'youtube' ? 'https://i.ytimg.com/vi/' + x.id + '/mqdefault.jpg' : x.img || null;
+const itemUri = x => (x.k === 'spotify' ? 'spotify:track:' : 'youtube:') + x.id;
+function countText(l) {
+  const s = l.items.filter(x => x.k === 'spotify').length, v = l.items.length - s;
+  return l.items.length ? [s && s + (s === 1 ? ' canción' : ' canciones'), v && v + (v === 1 ? ' video' : ' videos')].filter(Boolean).join(' y ') : 'Vacía';
+}
+/** Lo que suena ahora como elemento de lista (o null si no es una canción ni un video). */
+function curItem() {
+  const m = curUri.match(/^(spotify:track:|youtube:)(.+)$/); if (!m) return null;
+  const yt = m[1] === 'youtube:';
+  return cleanItem({ k: yt ? 'youtube' : 'spotify', id: m[2], title: $('title').textContent, sub: $('artist').textContent, img: yt ? undefined : lastCover });
+}
+
+// Reproducción de una lista.
+function playListAt(l, i) {
+  const x = l.items[i]; if (!x) return;
+  listPlay = { l, i, uri: itemUri(x), started: false, ending: false };
+  status(''); if (!$('library').hidden) toggleLib(false);
+  if (x.k === 'youtube') playYt(x.id, true);
+  else playTracks([listPlay.uri], listPlay.uri, true);   // una pista suelta (sin álbum): al terminar no sigue sola
+}
+/** Pasa al elemento siguiente o anterior. Al pasar del último, frena y avisa «Fin de la lista». */
+function listStep(n) {
+  if (!listPlay) return false;
+  const i = listPlay.i + n;
+  if (i >= listPlay.l.items.length) { endList(); return true; }
+  playListAt(listPlay.l, Math.max(0, i)); return true;
+}
+function endList() {
+  const name = listPlay.l.name; listPlay = null;
+  if (src === 'youtube') { if (ytReady) yt.pauseVideo(); }
+  else if (st && !st.paused) player?.pause()?.catch?.(() => {});
+  status('Fin de la lista «' + name + '»');
+}
+// Posición actual (ms) de lo que suena y vuelta al principio, sea Spotify o YouTube.
+const curPos = () => src === 'youtube' ? (ytReady ? yt.getCurrentTime() * 1000 : 0) : st ? (st.paused ? st.position : st.position + performance.now() - t0) : 0;
+function seekStart() {
+  if (src === 'youtube') { if (ytReady) yt.seekTo(0, true); }
+  else if (player) { player.seek(0); if (st) { st.position = 0; t0 = performance.now(); } }
+}
+/**
+ * Fin de una canción de Spotify dentro de una lista, a partir de los avisos del SDK: queda en pausa en 0 justo después de
+ * estar sonando cerca del final, o empieza a sonar otra cosa sin pedirla (la reproducción automática de Spotify).
+ */
+function checkListEnd(prev, prevT0, s) {
+  if (!s || listPlay.ending) return;
+  const t = s.track_window?.current_track, ours = t && (t.uri === listPlay.uri || t.linked_from?.uri === listPlay.uri);
+  if (ours) {
+    if (!s.paused) listPlay.started = true;
+    const was = prev && !prev.paused ? prev.position + performance.now() - prevT0 : 0;
+    if (listPlay.started && s.paused && s.position === 0 && was >= (s.duration || prev?.duration || 0) - 3000) { listPlay.ending = true; listStep(1); }
+  } else if (listPlay.started && !s.paused) { listPlay.ending = true; listStep(1); }
+}
+
+// Vista de listas dentro de la biblioteca.
+const btnTxt = (text, fn, title) => {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = text; if (title) b.title = b.ariaLabel = title;
+  b.onclick = e => { e.stopPropagation(); fn(b); }; return b;
+};
+const barRow = (...btns) => { const li = document.createElement('li'); li.className = 'lbar'; li.append(...btns); return li; };
+/** Fila con un campo de nombre (crear o renombrar). Enter confirma; Esc cancela. */
+function nameRow(value, label, ok, cancel) {
+  const i = document.createElement('input'); i.maxLength = 60; i.value = value; i.placeholder = 'Nombre de la lista'; i.ariaLabel = 'Nombre de la lista';
+  i.onkeydown = e => { if (e.key === 'Enter') ok(i.value); else if (e.key === 'Escape') { e.stopPropagation(); cancel(); } };
+  const li = barRow(i, btnTxt(label, () => ok(i.value))); setTimeout(() => i.focus()); return li;
+}
+// Reemplaza la lista visible conservando el scroll (para ordenar o quitar sin saltar arriba).
+const refill = parts => { const l = $('list'), y = l.scrollTop; l.replaceChildren(...parts); l.scrollTop = y; };
+const listCards = () => lists.length ? [sec('Mis listas'), ...lists.map(l => listRow({ name: l.name, sub: countText(l), img: l.items[0] ? itemImg(l.items[0]) : null, on: listPlay?.l === l,
+  onclick: () => { openListId = l.id; loadLists(); } }))] : [note('Todavía no tenés listas. Creá una, o usá el botón + de una canción o un video.')];
+/** Pestaña Listas: tus listas, o la lista abierta. */
+function loadLists() {
+  const l = lists.find(x => x.id === openListId); if (l) return showList(l);
+  openListId = null;
+  const create = () => fill([nameRow('', 'Crear', n => { const nl = newList(n); if (nl) openListId = nl.id; loadLists(); }, loadLists), ...listCards()]);
+  fill([barRow(btnTxt('+ Nueva', create), btnTxt('Importar', importList, 'Importar una lista desde un archivo .txt')), ...listCards()]);
+}
+function showList(l, confirmDel = false, keepScroll = false) {
+  const back = listRow({ name: '← Mis listas', sub: l.name + ' · ' + countText(l), onclick: () => { openListId = null; loadLists(); } });
+  const rename = () => fill([back, nameRow(l.name, 'Guardar', n => { l.name = cleanTxt(n, 60) || l.name; saveLists(); showList(l); }, () => showList(l))]);
+  const del = btnTxt(confirmDel ? '¿Seguro?' : 'Borrar', () => {
+    if (!confirmDel) return showList(l, true, true);
+    if (listPlay?.l === l) listPlay = null;
+    lists = lists.filter(x => x !== l); saveLists(); openListId = null; loadLists();
+  }, 'Borrar la lista');
+  const parts = [back, barRow(btnTxt('▶ Reproducir', () => l.items.length && playListAt(l, 0)), btnTxt('Exportar', () => exportList(l), 'Guardar como archivo .txt para compartir'), btnTxt('Renombrar', rename), del)];
+  if (!l.items.length) parts.push(note('Vacía: agregá canciones o videos con el botón + de los resultados o del título.'));
+  l.items.forEach((x, i) => parts.push(itemRow(l, x, i)));
+  (keepScroll ? refill : fill)(parts);
+}
+/** Fila de un elemento de la lista: origen (punto verde Spotify, rojo YouTube), subir, bajar y quitar. */
+function itemRow(l, x, i) {
+  const li = listRow({ name: x.title, sub: x.sub || (x.k === 'youtube' ? 'YouTube' : 'Spotify'), img: itemImg(x), on: listPlay?.l === l && listPlay.i === i, onclick: () => playListAt(l, i) });
+  const dot = document.createElement('span'); dot.className = 'srcdot ' + (x.k === 'youtube' ? 'yt' : 'sp'); dot.title = x.k === 'youtube' ? 'YouTube' : 'Spotify';
+  li.querySelector('.th').append(dot);
+  const move = d => {
+    const j = i + d; if (j < 0 || j >= l.items.length) return;
+    [l.items[i], l.items[j]] = [l.items[j], l.items[i]];
+    if (listPlay?.l === l) listPlay.i = listPlay.i === i ? j : listPlay.i === j ? i : listPlay.i;
+    saveLists(); showList(l, false, true);
+  };
+  const remove = () => {
+    l.items.splice(i, 1);
+    if (listPlay?.l === l && listPlay.i >= i) listPlay.i--;   // si se quita lo que suena, Siguiente va al que quedó en su lugar
+    saveLists(); showList(l, false, true);
+  };
+  const ctl = document.createElement('span'); ctl.className = 'lc';
+  ctl.append(btnTxt('▲', () => move(-1), 'Subir'), btnTxt('▼', () => move(1), 'Bajar'), btnTxt('✕', remove, 'Quitar de la lista'));
+  li.append(ctl); return li;
+}
+async function exportList(l) {
+  if (!l.items.length) return status('La lista está vacía', 4000);
+  const r = await bridge.listExport(l.name, l.items.map(({ k, id, title, sub }) => ({ k, id, title, sub })));
+  if (r?.ok) status('Lista exportada', 4000); else if (r?.error) status('No se pudo exportar la lista', 6000);
+}
+const IMPORT_ERR = { format: 'El archivo no es una lista de Mini Player (falta la primera línea MINIPLAYER-PLAYLIST 1)',
+  big: 'El archivo es demasiado grande (máximo 256 KB)', read: 'No se pudo leer el archivo' };
+async function importList() {
+  const r = await bridge.listImport(); if (!r) return;   // cancelado
+  if (r.error) return status(IMPORT_ERR[r.error] || 'No se pudo importar la lista', 8000);
+  const items = (r.items || []).map(cleanItem).filter(Boolean).slice(0, LIST_MAX);
+  const l = newList(r.name || 'Lista importada'); if (!l) return;
+  l.items = items; saveLists(); openListId = l.id; loadLists();
+  status('Importada: ' + items.length + (items.length === 1 ? ' elemento' : ' elementos') + (r.skipped ? ' · ' + r.skipped + ' líneas no válidas descartadas' : ''), 8000);
+}
+
+// Menú «Agregar a…» de una canción o un video: nueva lista y tus listas.
+function addListRows(item) {
+  const rows = [sec('Mis listas')];
+  const create = listRow({ name: 'Nueva lista…', sub: 'Crearla y agregar', onclick: () => create.replaceWith(nameRow('', 'Crear', n => {
+    const l = newList(n); if (l && addToList(l, { ...item })) { status('Agregado a «' + l.name + '»', 3000); togglePick(false); }
+  }, () => togglePick(false))) });
+  rows.push(create);
+  for (const l of lists) {
+    const li = listRow({ name: l.name, sub: countText(l), img: l.items[0] ? itemImg(l.items[0]) : null, onclick: () => {
+      if (!addToList(l, { ...item })) return;
+      li.classList.add('cur'); li.querySelector('span').textContent = 'Agregado ✓'; setTimeout(() => togglePick(false), 700);
+    } });
+    rows.push(li);
+  }
+  return rows;
+}
 
 // ---------- Aviso de actualización ----------
 /** Consulta (vía el proceso principal) si hay una versión nueva y, de haberla, muestra el aviso con su botón. */

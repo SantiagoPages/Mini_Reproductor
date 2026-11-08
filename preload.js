@@ -55,6 +55,9 @@ contextBridge.exposeInMainWorld('bridge', {
   ytKeySet: k => ipcRenderer.invoke('ytkey:set', k),
   ytKeyHelp: () => ipcRenderer.send('ytkey-help'),
   ytSearch: q => ipcRenderer.invoke('yt:search', q),
+  // Listas propias: exportar (elige dónde guardar) e importar (elige el archivo; se valida en el proceso principal).
+  listExport: (name, items) => ipcRenderer.invoke('list:export', name, items),
+  listImport: () => ipcRenderer.invoke('list:import'),
   onYtLogin: cb => ipcRenderer.on('yt-login', () => cb()),
   dragStart: () => ipcRenderer.send('drag-start'),
   dragMove: (dx, dy) => ipcRenderer.send('drag-move', dx, dy)
