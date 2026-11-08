@@ -23,10 +23,11 @@
   <option value="gradient">Degradado de dos colores de la portada</option>
   <option value="blur">Portada difuminada</option>
   <option value="rainbow">Arcoíris (cambio de color continuo)</option>
+  <option value="trio">Trío (fondo, acento y detalles de la portada)</option>
  </select>
  <label id="bgColorRow">Color del fondo <input type="color" id="bgColor"></label>
 </section>
-<section data-tab="look"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z"/></svg>Acento</h2>
+<section data-tab="look" id="accentSec"><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37-1.34-1.34a.996.996 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a.996.996 0 0 0 0-1.41z"/></svg>Acento</h2>
  <select id="accentMode" aria-label="Color de acento">
   <option value="white">Blanco</option>
   <option value="custom">Color elegido</option>
@@ -85,9 +86,9 @@
 </main>
 <footer>
 <!-- Oculto por defecto: se revela con una combinación de botones de tamaño (ver settings.js) -->
-<section id="secretBox" hidden><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8h-1V6A5 5 0 0 0 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM9 8V6a3 3 0 0 1 6 0v2H9z"/></svg>Código</h2>
- <input id="secretCode" type="text" placeholder="…" autocomplete="off" spellcheck="false" aria-label="Código">
- <button id="secretGo" type="button">Desbloquear</button><p id="secretMsg" class="hint"></p>
+<section id="codeBox" hidden><h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8h-1V6A5 5 0 0 0 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM9 8V6a3 3 0 0 1 6 0v2H9z"/></svg>Código</h2>
+ <input id="codeInput" type="text" placeholder="…" autocomplete="off" spellcheck="false" aria-label="Código">
+ <button id="codeGo" type="button">Agregar</button><p id="codeMsg" class="hint"></p>
 </section>
 <!-- Vuelve a los valores de fábrica -->
 <button id="reset" type="button">Restablecer valores</button>

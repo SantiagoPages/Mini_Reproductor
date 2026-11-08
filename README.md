@@ -18,7 +18,7 @@ audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
 - Ubuntu: paquetes `.deb` y `.AppImage`; usa X11/XWayland, deja las teclas multimedia al sistema y avisa si falta el llavero.
 - Aviso opcional al cambiar de canción, en una ventanita abajo a la derecha, cuando el reproductor está en segundo plano; toma el fondo y el color de acento del tema.
 - Inicio automático opcional con el sistema (Windows y Ubuntu): arranca oculto en la bandeja.
-- Personalización (Ajustes en pestañas): temas (incluidos Cherry, Sakura y Santuario), tamaño y forma de la ventana, 5 tipografías, 5 estilos de botones
+- Personalización (Ajustes en pestañas): temas (incluidos Cherry, Sakura, Santuario y Trío, que usa los tres colores más presentes de la portada), tamaño y forma de la ventana, 5 tipografías, 5 estilos de botones
   (incluida una rueda estilo iPod), forma de la portada y alto automático.
 - Se puede ocultar cualquier elemento (portada, artista, Me gusta, aleatorio, repetir, tiempo, volumen, dispositivos).
 - Aviso de nueva versión (opcional): consulta GitHub al iniciar; no instala nada, solo abre la página de la release.
@@ -34,7 +34,7 @@ audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
 
 ## Uso
 
-Descargá el instalador o la versión portable desde la sección **Releases** del repositorio. Windows puede
+Descargá el instalador o la versión portable desde la sección **Releases** del repositorio. El instalador es un asistente que permite elegir la carpeta de instalación (por defecto, la del usuario, sin pedir permisos de administrador). Windows puede
 mostrar un aviso de "editor desconocido" (SmartScreen) porque el ejecutable no tiene certificado de firma de
 código: elegí *Más información → Ejecutar de todos modos*.
 

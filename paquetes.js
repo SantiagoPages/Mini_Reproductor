@@ -1,10 +1,10 @@
 /**
- * Paquetes secretos: cifrado y descifrado.
+ * Paquetes de temas que se agregan con un código: sellar y abrir.
  *
- * Un paquete es un JSON cifrado con AES-256-GCM. La clave se deriva del código con scrypt (costoso a propósito,
- * para encarecer los intentos de adivinar). El código NO se guarda en ningún lado: un código es correcto si y
- * solo si el descifrado autentica (la etiqueta GCM coincide). Formato: "MPS1" | sal(16) | iv(12) | etiqueta(16) | datos.
- * Lo usan el proceso principal (descifrar) y herramientas/empacar-secreto.js (cifrar).
+ * La clave se deriva del código con scrypt (costoso a propósito, para encarecer los intentos de adivinar). El código
+ * no se guarda en ningún lado: es correcto si y solo si el paquete abre y autentica.
+ * Formato: "MPS1" | sal(16) | iv(12) | etiqueta(16) | datos.
+ * Lo usan el proceso principal (abrir) y herramientas/empacar.js (sellar).
  */
 const crypto = require('crypto');
 const MAGIC = Buffer.from('MPS1');
@@ -13,14 +13,14 @@ const norm = c => String(c).normalize('NFKC').trim().toLowerCase();
 const derive = (code, salt) => new Promise((ok, no) =>
   crypto.scrypt(norm(code), salt, 32, { N: 1 << 17, r: 8, p: 1, maxmem: 192 * 1024 * 1024 }, (e, k) => e ? no(e) : ok(k)));
 
-/** Cifra un objeto con el código dado y devuelve el Buffer del paquete. */
+/** Sella un objeto con el código dado y devuelve el Buffer del paquete. */
 async function seal(obj, code) {
   const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12), key = await derive(code, salt);
   const c = crypto.createCipheriv('aes-256-gcm', key, iv);
   const data = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
   return Buffer.concat([MAGIC, salt, iv, c.getAuthTag(), data]);
 }
-/** Descifra un paquete; devuelve el objeto, o null si el código es incorrecto o el archivo no es válido. */
+/** Abre un paquete; devuelve el objeto, o null si el código es incorrecto o el archivo no es válido. */
 async function open(buf, code) {
   if (buf.length < 49 || !buf.subarray(0, 4).equals(MAGIC)) return null;
   try {

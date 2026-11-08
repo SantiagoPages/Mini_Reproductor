@@ -11,7 +11,7 @@
  */
 const { app, BrowserWindow, components, ipcMain, safeStorage, shell, session, dialog, clipboard, Tray, Menu, nativeImage, globalShortcut, screen } = require('electron');
 const http = require('http'), fs = require('fs'), path = require('path');
-const secretos = require('./secretos');
+const paquetes = require('./paquetes');
 // Puerto fijo: debe coincidir con la redirect URI registrada en el panel de Spotify.
 const PORT = 8888, ORIGIN = `http://127.0.0.1:${PORT}`;
 // Lista blanca de recursos servidos (ruta -> [archivo, tipo MIME]). Cualquier otra ruta responde 404.
@@ -146,8 +146,15 @@ function setupTray() {
 // Teclas multimedia globales (activas con la aplicación en segundo plano); se reenvían al renderer.
 function registerMediaKeys() {
   if (IS_LINUX) return;   // las gestiona el sistema vía MPRIS (ver arriba)
-  const keys = { MediaPlayPause: 'toggle', MediaNextTrack: 'next', MediaPreviousTrack: 'prev' };
-  for (const [k, cmd] of Object.entries(keys)) globalShortcut.register(k, () => win?.webContents.send('media', cmd));
+  const keys = { MediaPlayPause: 'toggle', MediaStop: 'stop', MediaNextTrack: 'next', MediaPreviousTrack: 'prev' }, last = {};
+  for (const [k, cmd] of Object.entries(keys)) {
+    const ok = globalShortcut.register(k, () => {
+      const now = Date.now();
+      if (now - (last[k] || 0) < 200) return;   // una misma pulsación no debe procesarse dos veces (pausa y reanuda = parece que no hace nada)
+      last[k] = now; win?.webContents.send('media', cmd);
+    });
+    if (!ok) console.error('Tecla ' + k + ' no disponible (otra aplicación la tiene registrada).');
+  }
 }
 app.on('will-quit', () => globalShortcut.unregisterAll());
 ipcMain.on('close', () => app.quit());
@@ -160,9 +167,9 @@ const num = (lo, hi) => v => typeof v === 'number' && Number.isFinite(v) && v >=
 const oneOf = list => v => list.includes(v);
 const bool = v => typeof v === 'boolean';
 const RULES = {
-  // Además de los temas públicos, se admiten temas secretos desbloqueados (id "s_xxxx").
-  preset: v => ['classic', 'pure', 'light', 'neon', 'cherry', 'sakura', 'rainbow', 'custom'].includes(v) || (typeof v === 'string' && /^s_[a-z0-9]{1,16}$/.test(v)),
-  bgMode: oneOf(['dynamic', 'fixed', 'gradient', 'blur', 'rainbow']),
+  // Además de los temas públicos, se admiten los temas de paquetes agregados con código (id "s_xxxx").
+  preset: v => ['classic', 'pure', 'light', 'neon', 'cherry', 'sakura', 'rainbow', 'trio', 'custom'].includes(v) || (typeof v === 'string' && /^s_[a-z0-9]{1,16}$/.test(v)),
+  bgMode: oneOf(['dynamic', 'fixed', 'gradient', 'blur', 'rainbow', 'trio']),
   bgColor: isHex,
   accentMode: oneOf(['white', 'custom', 'auto']),
   accentColor: isHex,
@@ -254,15 +261,14 @@ ipcMain.handle('update:check', async () => {
   } catch { return null; }
 });
 ipcMain.on('open-update', () => shell.openExternal(`https://github.com/${REPO}/releases/latest`));
-// ---------- Temas secretos ----------
-// Los paquetes cifrados (carpeta secretos/) se prueban contra el código ingresado. Los que descifran se validan
-// contra un esquema estricto (solo datos: colores, SVG, sonido) y se guardan cifrados con safeStorage; el código
-// no se guarda. Tras 5 fallos se bloquean los intentos 30 s.
-const SECRET_KEYS = ['bgMode', 'bgColor', 'accentMode', 'accentColor', 'radius', 'bgOpacity', 'font', 'btnStyle', 'coverShape'];
+// ---------- Paquetes de temas ----------
+// Los paquetes de la carpeta paquetes/ se prueban contra el código ingresado. Los que abren se validan contra un
+// esquema estricto (solo datos: colores, SVG, sonido) y se guardan con safeStorage; el código no se guarda. Tras 5 fallos se bloquean los intentos 30 s.
+const PACK_KEYS = ['bgMode', 'bgColor', 'accentMode', 'accentColor', 'radius', 'bgOpacity', 'font', 'btnStyle', 'coverShape'];
 const str = (v, n) => typeof v === 'string' && v.length <= n;
 function cleanPack(o) {
   if (!o || typeof o !== 'object' || !/^s_[a-z0-9]{1,16}$/.test(o.id) || !str(o.label, 24) || !str(o.swatch, 200) || !/^[#a-z0-9(),.% -]+$/i.test(o.swatch)) return null;
-  const settings = Object.fromEntries(Object.entries(sanitize(o.settings)).filter(([k]) => SECRET_KEYS.includes(k)));
+  const settings = Object.fromEntries(Object.entries(sanitize(o.settings)).filter(([k]) => PACK_KEYS.includes(k)));
   const decor = (Array.isArray(o.decor) ? o.decor : []).slice(0, 4).filter(d => d && ['top', 'bottom', 'full'].includes(d.at) && str(d.svg, 20000)).map(d => ({ at: d.at, svg: d.svg }));
   const f = o.fall, fall = f && str(f.svg, 4000) && Number.isInteger(f.count) && f.count >= 1 && f.count <= 24 ? { svg: f.svg, count: f.count } : null;
   // Imagen de fondo (data URI) con atenuación opcional, y sonido (mp3 en base64).
@@ -276,31 +282,37 @@ function cleanPack(o) {
   const pad = num(0, 160)(o.pad) ? o.pad : 0;   // espacio extra abajo para que la decoración no tape los controles
   return { id: o.id, label: o.label, swatch: o.swatch, settings, decor, fall, image, imageDim, art, artW, pad, sound };
 }
-const packFile = () => path.join(app.getPath('userData'), 'secretos.bin');
+const packFile = () => path.join(app.getPath('userData'), 'paquetes.bin');
+// Migración: hasta la 0.0.8 el archivo tenía otro nombre; se renombra una sola vez si existe.
+function migratePackFile() {
+  const old = path.join(app.getPath('userData'), 'secretos.bin');
+  try { if (fs.existsSync(old) && !fs.existsSync(packFile())) fs.renameSync(old, packFile()); } catch { /* se ignora */ }
+}
 let packs = [], fails = 0, lockUntil = 0;
 function loadPacks() {
+  migratePackFile();
   try { packs = JSON.parse(safeStorage.decryptString(fs.readFileSync(packFile()))).map(cleanPack).filter(Boolean); } catch { packs = []; }
 }
 function savePacks() {
-  try { if (safeStorage.isEncryptionAvailable()) fs.writeFileSync(packFile(), safeStorage.encryptString(JSON.stringify(packs))); } catch (e) { console.error('Secretos:', e.message); }
+  try { if (safeStorage.isEncryptionAvailable()) fs.writeFileSync(packFile(), safeStorage.encryptString(JSON.stringify(packs))); } catch (e) { console.error('Paquetes:', e.message); }
 }
-// Temas incluidos en la app (carpeta temas/): mismo formato y validación que los secretos, pero siempre disponibles, sin código.
+// Temas incluidos en la app (carpeta temas/): mismo formato y validación que los paquetes con código, pero siempre disponibles, sin código.
 let builtin = [];
 try { const dir = path.join(__dirname, 'temas'); builtin = fs.readdirSync(dir).filter(f => f.endsWith('.json')).map(f => cleanPack(JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')))).filter(Boolean); } catch { /* sin temas incluidos */ }
 const allPacks = () => [...builtin, ...packs.filter(p => !builtin.some(b => b.id === p.id))];
-ipcMain.handle('secret:list', allPacks);
-ipcMain.handle('secret:unlock', async (e, code) => {
+ipcMain.handle('pack:list', allPacks);
+ipcMain.handle('pack:unlock', async (e, code) => {
   if (!str(code, 200) || code.trim().length < 3) return { ok: false };
   if (Date.now() < lockUntil) return { ok: false, wait: true };
   let found = null, files = [];
-  try { files = fs.readdirSync(path.join(__dirname, 'secretos')).filter(f => f.endsWith('.bin')); } catch { /* sin paquetes */ }
+  try { files = fs.readdirSync(path.join(__dirname, 'paquetes')).filter(f => f.endsWith('.bin')); } catch { /* sin paquetes */ }
   for (const f of files) {
-    try { found = cleanPack(await secretos.open(fs.readFileSync(path.join(__dirname, 'secretos', f)), code)); } catch { found = null; }
+    try { found = cleanPack(await paquetes.open(fs.readFileSync(path.join(__dirname, 'paquetes', f)), code)); } catch { found = null; }
     if (found) break;
   }
   if (!found) { if (++fails >= 5) { fails = 0; lockUntil = Date.now() + 30000; } return { ok: false }; }
   fails = 0; packs = [...packs.filter(p => p.id !== found.id), found]; savePacks();
-  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('secrets', allPacks());
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('packs', allPacks());
   return { ok: true, label: found.label };
 });
 // ---------- Aviso de canción nueva ----------

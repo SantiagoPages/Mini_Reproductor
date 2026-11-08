@@ -29,8 +29,8 @@ files:
   - toast.html
   - toast.js
   - toast.css
-  - secretos.js
-  - secretos/**
+  - paquetes.js
+  - paquetes/**
   - temas/**
   - icon.png
   - package.json
@@ -67,8 +67,12 @@ linux:
     - AppImage
 
 nsis:
-  oneClick: true
-  perMachine: false
+  oneClick: false                              # instalador con asistente, para poder elegir la carpeta
+  allowToChangeInstallationDirectory: true
+  perMachine: false                            # siempre por usuario: no pide permisos de administrador
+  language: "1034"                             # asistente en español
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
 
 portable:
   artifactName: ${productName}-portable-${version}.exe

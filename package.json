@@ -1,6 +1,6 @@
 {
   "name": "mini-player",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "main": "main.js",
   "license": "MIT",
   "private": true,

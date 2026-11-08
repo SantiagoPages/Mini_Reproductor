@@ -15,12 +15,12 @@ for (const [v, label] of SHAPES) {
   const b = document.createElement('button'); b.type = 'button'; b.dataset.v = v; b.textContent = label;
   b.onclick = () => bridge.setSettings({ coverShape: v }); $('coverShape').append(b);
 }
-// Temas secretos: los paquetes llegan desde el proceso principal; cada uno agrega un botón a la grilla de temas.
-let secrets = [], last = {};
-function renderSecrets() {
-  for (const b of document.querySelectorAll('#themes button.secret')) b.remove();
-  for (const p of secrets) {
-    const b = document.createElement('button'); b.type = 'button'; b.dataset.id = p.id; b.className = 'secret';
+// Paquetes de temas: llegan desde el proceso principal; cada uno agrega un botón a la grilla de temas.
+let packs = [], last = {};
+function renderPacks() {
+  for (const b of document.querySelectorAll('#themes button.pack')) b.remove();
+  for (const p of packs) {
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.id = p.id; b.className = 'pack';
     const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = p.swatch;
     b.append(sw, document.createTextNode(p.label));
     b.onclick = () => bridge.setSettings({ ...p.settings, preset: p.id, blossoms: false });
@@ -28,29 +28,29 @@ function renderSecrets() {
   }
   if (last.preset) show(last);
 }
-bridge.secretList().then(p => { secrets = p; renderSecrets(); });
-bridge.onSecrets(p => { secrets = p; renderSecrets(); });
+bridge.packList().then(p => { packs = p; renderPacks(); });
+bridge.onPacks(p => { packs = p; renderPacks(); });
 // El cuadrito del código aparece con una combinación de botones de tamaño. Solo se guarda su hash: la
-// combinación no figura en el código. Es un huevo de pascua; la seguridad real está en el código cifrado.
+// combinación no figura en el código. Es solo un atajo escondido; lo que importa es el código.
 const SEQ_HASH = 'd3cda760237ca18ea7c482d64dbeea0380c93b3c47a94c8be9da1c454dabe7c4';
 let seq = [];
 // Registra los últimos 5 botones de tamaño pulsados y revela el cuadro del código si su hash coincide.
 async function trackSeq(v) {
   seq = [...seq, v].slice(-5); if (seq.length < 5) return;
   const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seq.join(',')));
-  if ([...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join('') === SEQ_HASH) { $('secretBox').hidden = false; $('secretCode').focus(); }
+  if ([...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join('') === SEQ_HASH) { $('codeBox').hidden = false; $('codeInput').focus(); }
 }
-// Envía el código al proceso principal (que descifra y valida) y muestra el resultado; el campo se vacía siempre.
-$('secretGo').onclick = async () => {
-  const code = $('secretCode').value; $('secretCode').value = ''; $('secretMsg').textContent = 'Probando…';
-  const r = await bridge.secretUnlock(code);
-  $('secretMsg').textContent = r.ok ? '¡Desbloqueado: ' + r.label + '!' : r.wait ? 'Demasiados intentos. Esperá un momento.' : 'Código incorrecto.';
+// Envía el código al proceso principal (que abre y valida el paquete) y muestra el resultado; el campo se vacía siempre.
+$('codeGo').onclick = async () => {
+  const code = $('codeInput').value; $('codeInput').value = ''; $('codeMsg').textContent = 'Probando…';
+  const r = await bridge.packUnlock(code);
+  $('codeMsg').textContent = r.ok ? '¡Tema agregado: ' + r.label + '!' : r.wait ? 'Demasiados intentos. Esperá un momento.' : 'Código incorrecto.';
 };
-$('secretCode').onkeydown = e => { if (e.key === 'Enter') $('secretGo').click(); };
+$('codeInput').onkeydown = e => { if (e.key === 'Enter') $('codeGo').click(); };
 $('sfx').onchange = () => bridge.setSettings({ sfx: $('sfx').checked });
 // Refleja en los controles el estado de ajustes recibido (también oculta o muestra secciones según el tema).
 function show(s) {
-  last = s; const sp = secrets.find(p => p.id === s.preset);
+  last = s; const sp = packs.find(p => p.id === s.preset);
   $('sfxRow').hidden = !sp?.sound; $('sfx').checked = s.sfx !== false;
   for (const i of document.querySelectorAll('#shows input, #misc input')) i.checked = s[i.dataset.k] !== false;
   for (const b of document.querySelectorAll('#coverShape button')) b.classList.toggle('on', b.dataset.v === s.coverShape);
@@ -66,6 +66,7 @@ function show(s) {
   $('decor').hidden = s.preset !== 'cherry' && s.preset !== 'sakura';   // la opción solo existe en Cherry y Sakura
   $('bgColorRow').hidden = s.bgMode !== 'fixed';
   $('accentColorRow').hidden = s.accentMode !== 'custom';
+  $('accentSec').hidden = s.bgMode === 'trio';   // en el tema Trío el acento sale de la portada
   for (const b of document.querySelectorAll('#themes button')) b.classList.toggle('on', b.dataset.id === s.preset);
 }
 // Cualquier cambio manual deja de ser un tema prediseñado.

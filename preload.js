@@ -34,10 +34,10 @@ contextBridge.exposeInMainWorld('bridge', {
   // Aviso de versión nueva: consulta y apertura de la página de la release (sin parámetros desde la interfaz).
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   openUpdate: () => ipcRenderer.send('open-update'),
-  // Temas secretos: lista de desbloqueados, intento de desbloqueo con un código y aviso de cambios.
-  secretList: () => ipcRenderer.invoke('secret:list'),
-  secretUnlock: c => ipcRenderer.invoke('secret:unlock', c),
-  onSecrets: cb => ipcRenderer.on('secrets', (_, p) => cb(p)),
+  // Paquetes de temas: lista de agregados, intento de agregar uno con un código y aviso de cambios.
+  packList: () => ipcRenderer.invoke('pack:list'),
+  packUnlock: c => ipcRenderer.invoke('pack:unlock', c),
+  onPacks: cb => ipcRenderer.on('packs', (_, p) => cb(p)),
   // Aviso de canción nueva: la interfaz envía los datos y el proceso principal decide si lo muestra.
   announce: d => ipcRenderer.send('announce', d),
   // Alto de diseño informado por la interfaz y arrastre manual de la ventana.

@@ -34,6 +34,10 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--fg);outline-off
 .pill{border:0;border-radius:999px;padding:11px;background:var(--accent);color:var(--accent-fg);font:inherit;font-weight:600;cursor:pointer}
 /* Portada y metadatos. */
 #cover{width:240px;height:240px;border-radius:16px;background:rgba(0,0,0,.25) center/cover;box-shadow:0 12px 28px rgba(0,0,0,.4)}
+/* Tema Trío: el tercer color de la portada tiñe el título y enmarca la portada; el segundo, el botón de reproducir. */
+body.trio #title{color:var(--det)}
+body.trio #cover{outline:2px solid var(--det)}
+body.trio #play{background:var(--accent);color:var(--accent-fg)}
 #title{margin-top:16px;font-size:17px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #artist{margin-top:2px;font-size:13px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #time{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:11px;font-variant-numeric:tabular-nums;opacity:.85}
@@ -164,17 +168,17 @@ svg{width:22px;height:22px;fill:currentColor}.lg svg{width:30px;height:30px}.min
 #ctl .sm{width:46px;height:46px}#ctl .lg{width:64px;height:64px}
 #ctl .mini{width:28px;height:28px}#ctl .mini svg{width:15px;height:15px}
 
-/* ---- Temas secretos: capas de decoración detrás del contenido ---- */
-#secret{position:absolute;inset:0;pointer-events:none;overflow:hidden;border-radius:inherit;isolation:isolate}   /* hereda las esquinas de la ventana: nada se sale del borde redondeado */
-#secret .dec{position:absolute;left:0;width:100%}
-#secret .dec.top{top:0}#secret .dec.bottom{bottom:0}
-#secret .dec svg,#secret .fi svg{display:block;width:100%;height:auto}
-#secret .dec.full{top:0;bottom:0}#secret .dec.full svg{height:100%}   /* posición "full": ocupa todo el alto (p. ej. columnas a los lados) */
-#secret .fi{position:absolute;top:0;left:var(--x);width:var(--s);opacity:.5;animation:fall var(--d) linear var(--dl) infinite}
-.paused #secret .fi{animation-play-state:paused}
-@media (prefers-reduced-motion:reduce){#secret .fi{display:none}}
-#secret .art{position:absolute;bottom:0;left:0;right:0;margin:0 auto;height:auto;display:block}
-#secret .bgart{position:absolute;inset:0;background-size:cover;background-position:center}
+/* ---- Paquetes de temas: capas de decoración detrás del contenido ---- */
+#deco{position:absolute;inset:0;pointer-events:none;overflow:hidden;border-radius:inherit;isolation:isolate}   /* hereda las esquinas de la ventana: nada se sale del borde redondeado */
+#deco .dec{position:absolute;left:0;width:100%}
+#deco .dec.top{top:0}#deco .dec.bottom{bottom:0}
+#deco .dec svg,#deco .fi svg{display:block;width:100%;height:auto}
+#deco .dec.full{top:0;bottom:0}#deco .dec.full svg{height:100%}   /* posición "full": ocupa todo el alto (p. ej. columnas a los lados) */
+#deco .fi{position:absolute;top:0;left:var(--x);width:var(--s);opacity:.5;animation:fall var(--d) linear var(--dl) infinite}
+.paused #deco .fi{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){#deco .fi{display:none}}
+#deco .art{position:absolute;bottom:0;left:0;right:0;margin:0 auto;height:auto;display:block}
+#deco .bgart{position:absolute;inset:0;background-size:cover;background-position:center}
 
 /* ---- Mini ventana "Guardar en…" y pestañas más compactas ---- */
 #pick{position:absolute;z-index:6;top:48px;left:12px;right:12px;max-height:calc(100% - 60px);display:flex;flex-direction:column;padding:6px;border-radius:14px;

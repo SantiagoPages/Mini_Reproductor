@@ -199,7 +199,33 @@ function tint(img) {
   };
   const c1 = ranked[0] ? tone(ranked[0]) : [250, .15, .25];   // respaldo: portada sin color dominante
   const c2 = ranked[1] && ranked[1].w > ranked[0].w * .2 ? tone(ranked[1]) : [(c1[0] + 30) % 360, c1[1], Math.max(.1, c1[2] - .1)];
-  palette = [c1, c2]; paint();
+  palette = [c1, c2]; trio = trioColors(img); paint();
+}
+
+/**
+ * Tema Trío: los tres colores más presentes de la portada, ordenados por superficie. A diferencia de tint(), no se
+ * descartan oscuros, claros ni grises (un fondo negro o blanco puede ser el color principal). Los píxeles se agrupan en
+ * cubos (tono × luminosidad; los neutros solo por luminosidad) y se eligen cubos cuyos colores se distingan entre sí.
+ * Devuelve hasta 3 colores RGB (0..1); los que no existan quedan en null.
+ */
+function trioColors(img) {
+  const N = 32, c = document.createElement('canvas'); c.width = c.height = N;
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0, N, N);
+  const d = x.getImageData(0, 0, N, N).data, bk = new Map(); let total = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 128) continue;
+    const [h, s, l] = toHsl(d[i], d[i + 1], d[i + 2]); total++;
+    const key = s < .15 || l < .1 || l > .92 ? 'n' + Math.min(3, Math.floor(l * 4)) : 'c' + (Math.floor(h / 30) % 12) + (l < .35 ? 0 : l < .65 ? 1 : 2);
+    const b = bk.get(key) || { n: 0, r: 0, g: 0, b: 0 }; b.n++; b.r += d[i]; b.g += d[i + 1]; b.b += d[i + 2]; bk.set(key, b);
+  }
+  const ranked = [...bk.values()].sort((a, b) => b.n - a.n).map(b => ({ n: b.n, c: [b.r / b.n, b.g / b.n, b.b / b.n] }));
+  const out = [];
+  for (const b of ranked) {
+    if (out.length && b.n < total * .015) break;   // ignora manchas minúsculas
+    if (out.every(o => Math.hypot(o[0] - b.c[0], o[1] - b.c[1], o[2] - b.c[2]) >= 70)) out.push(b.c);
+    if (out.length === 3) break;
+  }
+  return [0, 1, 2].map(i => out[i] ? out[i].map(v => v / 255) : null);
 }
 
 // ---------- Apariencia ----------
@@ -207,7 +233,7 @@ function tint(img) {
 // portada actual.
 let cfg = { bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff', radius: 28, bgOpacity: 1,
   font: 'inter', btnStyle: 'raised', coverShape: 'rounded' };
-let palette = null, coverData = '';
+let palette = null, trio = null, coverData = '';
 // Modo arcoíris: el tono avanza de forma continua (ciclo de ~22 s). Los colores se oscurecen igual que los de la
 // portada para que el texto blanco conserve el contraste. Se pausa con la ventana oculta y se respeta la
 // preferencia del sistema de reducir animaciones.
@@ -227,6 +253,15 @@ const hexRgb = x => { const n = parseInt(x.slice(1), 16); return [(n >> 16) / 25
 const rgbCss = c => `rgb(${c.map(v => Math.round(v * 255)).join(' ')})`;
 // Por encima de este umbral de luminancia, el texto oscuro contrasta más que el blanco.
 const isLight = rgb => relLuminance(rgb) > .179;
+// Contraste WCAG entre dos colores RGB (0..1) y ajuste de un color hasta alcanzar el mínimo sobre un fondo.
+const contrast = (a, b) => { const x = relLuminance(a), y = relLuminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+function ensure(c, bgc, min, fallback) {
+  // Se mueve solo la luminosidad (aclara sobre fondos oscuros, oscurece sobre claros) para conservar tono y saturación.
+  const up = !isLight(bgc); let [h, s, l] = toHsl(c[0] * 255, c[1] * 255, c[2] * 255);
+  for (let i = 0; i <= 50 && l >= 0 && l <= 1; i++, l += up ? .02 : -.02) { const m = hslToRgb(h, s, l); if (contrast(m, bgc) >= min) return m; }
+  return fallback;
+}
+const rgbHex = c => '#' + c.map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
 /** Resuelve el tema en variables CSS (fondo, acento, contraste, esquinas, transparencia) y el fondo difuminado. */
 function paint() {
   const [c1, c2] = cfg.bgMode === 'rainbow' ? rainbowPalette(hue) : palette || [[250, .15, .25], [250, .15, .25]], fixed = cfg.bgMode === 'fixed';
@@ -241,6 +276,17 @@ function paint() {
   set('--line', light ? 'rgba(0,0,0,.18)' : 'rgba(255,255,255,.22)');
   set('--shade', light ? 'linear-gradient(160deg,rgba(255,255,255,.35),rgba(0,0,0,.06))' : 'linear-gradient(160deg,rgba(255,255,255,.1),rgba(0,0,0,.35))');
   set('--accent', rgbCss(accent)); set('--accent-fg', isLight(accent) ? '#16181d' : '#fff');
+  // Tema Trío: fondo = color más presente de la portada, acento = el segundo, detalles (título y borde) = el tercero.
+  const tri = cfg.bgMode === 'trio' && trio && trio[0];
+  document.body.classList.toggle('trio', !!tri);
+  if (tri) {
+    const bgc = trio[0], lt = isLight(bgc), fgc = lt ? [.09, .1, .11] : [1, 1, 1];
+    const ac = trio[1] ? ensure(trio[1], bgc, 2, fgc) : fgc, de = trio[2] ? ensure(trio[2], bgc, 4.5, fgc) : fgc;
+    set('--bg', rgbHex(bgc)); set('--fg', lt ? '#16181d' : '#fff');
+    set('--btn', relLuminance(bgc) < .04 ? 'rgba(255,255,255,.1)' : lt ? 'rgba(0,0,0,.09)' : 'rgba(0,0,0,.28)');
+    set('--line', lt ? 'rgba(0,0,0,.2)' : 'rgba(255,255,255,.22)'); set('--shade', 'none');
+    set('--accent', rgbCss(ac)); set('--accent-fg', isLight(ac) ? '#16181d' : '#fff'); set('--det', rgbCss(de));
+  }
   set('--radius', (cfg.radius ?? 28) + 'px'); set('--bgo', cfg.bgOpacity ?? 1);
   const blur = cfg.bgMode === 'blur' && coverData;
   $('bgimg').hidden = !blur; if (blur) $('bgimg').style.backgroundImage = `url(${coverData})`;
@@ -278,7 +324,7 @@ function applyLook() {
   else if (!wheel && inTop) { $('ctl').prepend($('shuf')); $('ctl').append($('rep')); }
   for (const [k, c] of Object.entries(HIDES)) document.body.classList.toggle(c, cfg[k] === false);
 }
-// ---------- Temas secretos ----------
+// ---------- Paquetes de temas ----------
 // El proceso principal entrega paquetes ya validados (solo datos). El SVG se vuelve a depurar aquí con una lista
 // blanca de elementos y atributos antes de insertarlo; los estilos se aplican por CSSOM (compatible con la CSP).
 let packs = [], pack = null, builtId = null, dim = 0;
@@ -301,24 +347,24 @@ function safeSvg(str) {
   cleanNode(root); root.removeAttribute('width'); root.removeAttribute('height');
   return document.importNode(root, true);
 }
-/** Reconstruye la decoración solo cuando cambia el tema secreto activo (no en cada ajuste). */
+/** Reconstruye la decoración solo cuando cambia el tema de paquete activo (no en cada ajuste). */
 function applyPack() {
   pack = packs.find(p => p.id === cfg.preset) || null;
-  $('secret').hidden = !pack; if ((pack?.id || null) === builtId) return;
-  builtId = pack?.id || null; $('secret').replaceChildren(); prepSound();
+  $('deco').hidden = !pack; if ((pack?.id || null) === builtId) return;
+  builtId = pack?.id || null; $('deco').replaceChildren(); prepSound();
   $('player').style.setProperty('--padb', (pack?.pad || 20) + 'px');   // margen inferior propio del tema
   lastH = 0; requestAnimationFrame(() => reportSize());   // vuelve a informar el alto: la ventana debe crecer con el margen
   if (!pack) return;
   if (pack.image) {   // imagen de fondo, con una capa oscura opcional para que el texto siga legible
     const bg = document.createElement('div'); bg.className = 'bgart', dim = pack.imageDim || 0;
-    bg.style.backgroundImage = `linear-gradient(rgba(0,0,0,${dim}),rgba(0,0,0,${dim})),url(${pack.image})`; $('secret').append(bg);
+    bg.style.backgroundImage = `linear-gradient(rgba(0,0,0,${dim}),rgba(0,0,0,${dim})),url(${pack.image})`; $('deco').append(bg);
   }
   for (const d of pack.decor || []) {
     const s = safeSvg(d.svg); if (!s) continue;
-    const w = document.createElement('div'); w.className = 'dec ' + d.at; w.append(s); $('secret').append(w);
+    const w = document.createElement('div'); w.className = 'dec ' + d.at; w.append(s); $('deco').append(w);
   }
   if (pack.art) {   // imagen apoyada abajo, por encima de la decoración y por debajo de lo que cae
-    const im = document.createElement('img'); im.className = 'art'; im.alt = ''; im.src = pack.art; im.style.width = (pack.artW || 70) + '%'; $('secret').append(im);
+    const im = document.createElement('img'); im.className = 'art'; im.alt = ''; im.src = pack.art; im.style.width = (pack.artW || 70) + '%'; $('deco').append(im);
   }
   const r = (x, y) => x + Math.random() * (y - x);
   for (let i = 0; i < (pack.fall?.count || 0); i++) {
@@ -326,10 +372,10 @@ function applyPack() {
     const f = document.createElement('div'); f.className = 'fi'; f.append(s);
     f.style.setProperty('--x', r(0, 94).toFixed(1) + '%'); f.style.setProperty('--s', r(12, 20).toFixed(1) + 'px');
     f.style.setProperty('--d', r(9, 16).toFixed(1) + 's'); f.style.setProperty('--dl', (-r(0, 16)).toFixed(1) + 's');
-    f.style.setProperty('--sw', r(-30, 30).toFixed(0) + 'px'); $('secret').append(f);
+    f.style.setProperty('--sw', r(-30, 30).toFixed(0) + 'px'); $('deco').append(f);
   }
 }
-// Sonido del tema: una muestra de audio (mp3 en base64) incluida en el paquete cifrado. Se decodifica una vez y se
+// Sonido del tema: una muestra de audio (mp3 en base64) incluida en el paquete. Se decodifica una vez y se
 // reproduce en cada pulsación de botón, con una leve variación de tono para que no suene siempre igual.
 let actx, lastPlay = 0, sampleBuf = null, sampleFor = null;
 /** Decodifica la muestra del tema activo (una sola vez por tema). */
@@ -353,8 +399,8 @@ document.addEventListener('click', e => {
   if (!(sampleBuf && pack?.sound && cfg.sfx !== false && e.target.closest('button'))) return;
   try { playSample(pack.sound.volume); } catch (err) { console.error('Sonido:', err); status('Sonido: ' + err.message); }
 }, true);
-bridge.secretList?.().then(p => { packs = p; builtId = undefined; applyPack(); });
-bridge.onSecrets?.(p => { packs = p; builtId = undefined; applyPack(); });
+bridge.packList?.().then(p => { packs = p; builtId = undefined; applyPack(); });
+bridge.onPacks?.(p => { packs = p; builtId = undefined; applyPack(); });
 // Punto único de entrada para los ajustes: actualiza el estado y repinta todo lo que depende de ellos.
 const applyCfg = s => {
   const noticeOn = cfg.trackNotice === false && s.trackNotice;   // la opción se acaba de activar (no al cargar)
@@ -384,6 +430,12 @@ async function togglePlayback() {
   if (await player.getCurrentState()) return player.togglePlay();
   const r = await sp('/me/player', 'PUT', { device_ids: [dev], play: true });
   if (!r.ok) status('No se pudo iniciar la reproducción (' + why(r.status, 'cmd') + ')');
+}
+// Detener: Spotify no tiene "stop", así que se pausa y se vuelve al principio de la pista.
+async function stopPlayback() {
+  if (!player || !(await player.getCurrentState())) return;
+  await player.pause(); await player.seek(0);
+  if (st) { st.position = 0; t0 = performance.now(); }
 }
 $('play').onclick = togglePlayback;
 // Anterior: si la pista ya lleva más de 4 s, se reinicia en vez de volver a la anterior (como en la app de Spotify).
@@ -417,7 +469,7 @@ $('pin').onclick = async () => $('pin').classList.toggle('on', await bridge.togg
 $('close').onclick = () => bridge.close();
 $('cfg').onclick = () => bridge.openSettings();
 bridge.onPinned?.(v => $('pin').classList.toggle('on', v));
-bridge.onMedia?.(cmd => { if (!player) return; if (cmd === 'toggle') togglePlayback(); else if (cmd === 'next') player.nextTrack(); else if (cmd === 'prev') goPrev(); });
+bridge.onMedia?.(cmd => { if (!player) return; if (cmd === 'toggle') togglePlayback(); else if (cmd === 'stop') stopPlayback(); else if (cmd === 'next') player.nextTrack(); else if (cmd === 'prev') goPrev(); });
 // Atajo: al pegar (Ctrl+V) un enlace de Spotify se inicia su reproducción.
 document.addEventListener('paste', async e => {
   if (e.target.tagName === 'INPUT' || !dev) return;
