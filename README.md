@@ -1,7 +1,38 @@
 # Mini Player
 
-Reproductor de escritorio minimalista para Spotify (Windows y Ubuntu). Una ventana pequeña y movible que reproduce
-audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
+Reproductor de escritorio minimalista para Spotify y YouTube (Windows y Ubuntu). Una ventana pequeña y movible que
+reproduce por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
+
+## YouTube (desde la 0.9)
+
+- Pegá un enlace de YouTube (Ctrl+V o en el buscador) y el video se reproduce con el reproductor oficial de YouTube,
+  que ocupa el lugar de la portada. La app no tapa, oculta ni modifica ese reproductor, ni intenta evitar anuncios.
+- **Modo video**: una ventana algo más ancha con el video arriba y los controles abajo. Se agranda o achica arrastrando
+  los bordes, y tiene un modo **solo video** (Esc para volver). Con una canción de Spotify muestra la portada.
+- **Buscador**: elegí buscar en Spotify, en YouTube o en ambas. Buscar en YouTube requiere tu propia clave gratuita de
+  la YouTube Data API v3 (Ajustes → Sistema → YouTube); la app no incluye ninguna. Cada búsqueda se hace con Enter
+  para cuidar el cupo diario (unas 100 búsquedas por día).
+- **Conectar con Google** (opcional, Ajustes → Sistema): para que el reproductor use tu cuenta de YouTube.
+- **Recientes**: canciones de Spotify, videos vistos o una mezcla ordenada por fecha.
+- Mientras suena YouTube, la app no consulta la API de Spotify en segundo plano.
+
+## Listas propias
+
+- Pestaña **Mis listas**: listas del reproductor que mezclan canciones de Spotify y videos de YouTube.
+- El botón **+** (en los resultados y junto al título) abre **Agregar a…**: una lista nueva, tus listas o la cola de Spotify.
+- Al reproducir una lista, anterior y siguiente la recorren; al terminar, la reproducción se frena y avisa *Fin de la lista*.
+  Si un video no se puede reproducir, a los 10 segundos pasa al siguiente.
+- **Exportar e importar** como archivo `.txt` de texto plano para compartirlas:
+
+  ```
+  MINIPLAYER-PLAYLIST 1
+  Nombre: Para el viaje
+  spotify:track:4uLU6hMCjMI75M1A2tKUQC | Título | Artista
+  youtube:dQw4w9WgXcQ | Título | Canal
+  ```
+
+  El archivo importado se trata como dato no confiable: se valida en el proceso principal (máximo 256 KB y 500
+  elementos, patrón estricto por línea, sin URLs ni imágenes) y las líneas inválidas se descartan con aviso.
 
 ## Características
 
@@ -10,8 +41,7 @@ audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
 - Anterior, play/pausa, siguiente, aleatorio, repetir, volumen (con botón de silencio) y botón de Me gusta.
 - Biblioteca (tus playlists) y buscador de canciones, álbumes, artistas y playlists (hasta 10 resultados por tipo).
 - Pestañas de **Me gusta**, **Top** (tus canciones más escuchadas), **Colección** (álbumes guardados, artistas que seguís y tus artistas más escuchados; al tocar un artista ves sus álbumes), **Cola** y **Reciente**.
-- Botón **+** junto al título: abre una mini ventana para guardar la canción en Me gusta o en cualquiera de tus playlists editables.
-- Botón **+** en los resultados para agregar canciones a la cola.
+- Botón **+** junto al título: guarda la canción en Me gusta, en tus listas o en cualquiera de tus playlists editables.
 - Selector de **dispositivo** de reproducción.
 - Atajos de teclado: Espacio (pausa), ← → (anterior/siguiente), ↑ ↓ (volumen), M (silencio) y L (Me gusta).
 - Recuerda la posición y el monitor de la ventana; si el monitor ya no está, vuelve al principal. Ctrl+Alt+C la centra en el monitor donde esté el mouse (útil si queda en un lugar inalcanzable).
@@ -22,7 +52,8 @@ audio por sí misma, sin necesidad de tener abierta la aplicación de Spotify.
   (incluida una rueda estilo iPod), forma de la portada y alto automático.
 - Se puede ocultar cualquier elemento (portada, artista, Me gusta, aleatorio, repetir, tiempo, volumen, dispositivos).
 - Aviso de nueva versión (opcional): consulta GitHub al iniciar; no instala nada, solo abre la página de la release.
-- Ícono en la bandeja, modo "siempre encima" y teclas multimedia globales.
+- Ícono en la bandeja, modo "siempre encima" y teclas multimedia globales (reproducir/pausa, siguiente, anterior y detener).
+- Interfaz en **español o inglés** (Ajustes → Sistema → Idioma).
 - Sesión persistente, guardada cifrada con el almacén de credenciales del sistema (Windows) o el llavero (Ubuntu).
 
 ## Requisitos
@@ -77,9 +108,13 @@ un servidor de GitHub, a mano desde la pestaña *Actions* o automáticamente al 
 - **Autenticación**: OAuth 2.0 con PKCE (cliente público, sin secretos). El refresh token se cifra con `safeStorage`.
 - **Endurecimiento**: CSP restrictiva, validación del encabezado Host (anti DNS rebinding), navegación y ventanas
   nuevas bloqueadas, permisos de mínimo privilegio y construcción del DOM con `textContent`.
-- **Repositorio**: no contiene ningún Client ID ni credencial.
-- **Privacidad**: la única consulta externa propia, además de Spotify, es el aviso de versión a la API pública de
-  GitHub (sin enviar datos personales). Se desactiva en Ajustes → Sistema.
+- **Repositorio**: no contiene ningún Client ID, clave de API ni credencial.
+- **YouTube**: reproductor oficial embebido (IFrame API) permitido por la CSP solo desde `www.youtube.com`. La clave de
+  la YouTube Data API del usuario se guarda cifrada con `safeStorage` y nunca llega a la interfaz: las búsquedas las
+  hace el proceso principal.
+- **Privacidad**: además de Spotify y de YouTube (solo al reproducir o buscar videos), la única consulta externa es el
+  aviso de versión a la API pública de GitHub (sin enviar datos personales). Se desactiva en Ajustes → Sistema.
+- **Listas e historial de videos**: se guardan solo en la PC (almacenamiento local de la app).
 - **Ajustes**: se guardan en local (`settings.json`) y se validan contra una lista de valores permitidos.
 
 ## Limitaciones
@@ -88,18 +123,23 @@ un servidor de GitHub, a mano desde la pestaña *Actions* o automáticamente al 
 - La firma de EVS puede vencer: de vez en cuando hace falta recompilar y volver a publicar el ejecutable.
 - No es un producto oficial de Spotify.
 - Las pestañas Top, Colección y Reciente dependen de los datos que Spotify devuelva para tu cuenta.
+- Algunos videos de YouTube no se pueden ver fuera de YouTube (decisión de su dueño); el buscador los omite.
+- La búsqueda en YouTube depende del cupo diario gratuito de la clave de cada usuario.
 
 ## Aviso legal
 
-Mini Player es un proyecto independiente, sin afiliación con Spotify AB. Spotify es una marca registrada de
-Spotify AB. El uso de la API está sujeto a los términos para desarrolladores de Spotify.
+Mini Player es un proyecto independiente, sin afiliación con Spotify AB ni con Google. Spotify es una marca registrada
+de Spotify AB; YouTube es una marca de Google LLC. El uso de las API está sujeto a los términos para desarrolladores de
+Spotify y a los Términos del Servicio de las API de YouTube.
 
 ## English summary
 
 Minimal Windows and Ubuntu desktop player for Spotify that plays audio on its own through the Web Playback SDK (Premium
-required). Built with Electron (castLabs build with Widevine; EVS signing required). Every user supplies their own
-Spotify Client ID: none is bundled. OAuth 2.0 PKCE, encrypted session storage, sandboxed UI with a strict CSP.
-See "Compilar desde el código" for build steps.
+required), and since 0.9 also YouTube videos through the official embedded player (music mode, small video mode,
+search with the user's own YouTube Data API key, and local playlists mixing songs and videos, exportable as plain
+text). Interface in Spanish or English. Built with Electron (castLabs build with Widevine; EVS signing required). Every
+user supplies their own Spotify Client ID and YouTube API key: none is bundled. OAuth 2.0 PKCE, encrypted session and
+key storage, sandboxed UI with a strict CSP. See "Compilar desde el código" for build steps.
 
 ## Licencia
 
