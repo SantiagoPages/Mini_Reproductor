@@ -20,6 +20,7 @@ const FILES = {
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/themes.js': ['themes.js', 'text/javascript; charset=utf-8'],
+  '/i18n.js': ['i18n.js', 'text/javascript; charset=utf-8'],
   '/settings.html': ['settings.html', 'text/html; charset=utf-8'],
   '/settings.js': ['settings.js', 'text/javascript; charset=utf-8'],
   '/settings.css': ['settings.css', 'text/css; charset=utf-8'],
@@ -86,7 +87,7 @@ function serve() {
     if (u.pathname === '/' && (u.searchParams.has('code') || u.searchParams.has('error'))) {
       win?.webContents.send('auth', { code: u.searchParams.get('code'), state: u.searchParams.get('state'), error: u.searchParams.get('error') });
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end('<meta charset="utf-8"><title>Listo</title><body style="font:16px sans-serif;background:#1b1535;color:#fff;display:grid;place-items:center;height:100vh;margin:0">Listo, ya podés volver al reproductor.');
+      return res.end('<meta charset="utf-8"><title>' + M('Listo') + '</title><body style="font:16px sans-serif;background:#1b1535;color:#fff;display:grid;place-items:center;height:100vh;margin:0">' + M('Listo, ya podés volver al reproductor.'));
     }
     const f = FILES[u.pathname];
     if (!f) { res.writeHead(404); return res.end(); }
@@ -96,7 +97,7 @@ function serve() {
       res.end(d);
     });
   }).on('error', () => {
-    dialog.showErrorBox('Mini Player', `El puerto ${PORT} está ocupado por otro programa. Cerralo y volvé a abrir la app.`);
+    dialog.showErrorBox('Mini Player', M('El puerto {0} está ocupado por otro programa. Cerralo y volvé a abrir la app.', PORT));
     app.quit();
   }).listen(PORT, '127.0.0.1', ok));
 }
@@ -130,6 +131,12 @@ ipcMain.handle('pin', () => { const v = !win.isAlwaysOnTop(); setPin(v); return 
 ipcMain.on('now', (e, title, artist) => {
   if (typeof title === 'string' && typeof artist === 'string') tray?.setToolTip(`${artist} — ${title}`.slice(0, 120));
 });
+// Textos del proceso principal (bandeja, diálogos, avisos) en el idioma elegido; la interfaz traduce los suyos con i18n.js.
+const MAIN_EN = { 'Mostrar / Ocultar': 'Show / Hide', 'Ajustes…': 'Settings…', 'Siempre encima': 'Always on top', 'Salir': 'Quit',
+  'Exportar lista': 'Export list', 'Importar lista': 'Import list', 'Lista de Mini Player': 'Mini Player list', 'Ajustes': 'Settings',
+  'Conectar con Google': 'Connect to Google', 'Listo': 'Done', 'Listo, ya podés volver al reproductor.': 'Done, you can go back to the player.',
+  'El puerto {0} está ocupado por otro programa. Cerralo y volvé a abrir la app.': 'Port {0} is in use by another program. Close it and reopen the app.' };
+const M = (s, ...a) => (settings.lang === 'en' ? MAIN_EN[s] ?? s : s).replace(/\{(\d)\}/g, (x, i) => a[i]);
 // Ícono de bandeja con menú contextual. Si falta el recurso gráfico, la aplicación continúa sin bandeja.
 function setupTray() {
   const img = nativeImage.createFromPath(path.join(__dirname, 'icon.png'));
@@ -138,15 +145,19 @@ function setupTray() {
   tray.setToolTip('Mini Player');
   const toggle = () => { if (win.isVisible()) win.hide(); else { win.show(); win.focus(); } };
   tray.on('click', toggle);
-  menu = Menu.buildFromTemplate([
-    { label: 'Mostrar / Ocultar', click: toggle },
-    { label: 'Ajustes…', click: openSettings },
-    { id: 'pin', label: 'Siempre encima', type: 'checkbox', checked: false, click: m => setPin(m.checked) },
-    { type: 'separator' },
-    { label: 'Salir', click: () => app.quit() }
-  ]);
-  tray.setContextMenu(menu);
+  buildTrayMenu = () => {
+    menu = Menu.buildFromTemplate([
+      { label: M('Mostrar / Ocultar'), click: toggle },
+      { label: M('Ajustes…'), click: openSettings },
+      { id: 'pin', label: M('Siempre encima'), type: 'checkbox', checked: !!win?.isAlwaysOnTop(), click: m => setPin(m.checked) },
+      { type: 'separator' },
+      { label: M('Salir'), click: () => app.quit() }
+    ]);
+    tray.setContextMenu(menu);
+  };
+  buildTrayMenu();
 }
+let buildTrayMenu = () => {};   // se reemplaza al crear la bandeja; se vuelve a llamar al cambiar el idioma
 // Teclas multimedia globales (activas con la aplicación en segundo plano); se reenvían al renderer.
 function registerMediaKeys() {
   if (IS_LINUX) return;   // las gestiona el sistema vía MPRIS (ver arriba)
@@ -188,11 +199,12 @@ const RULES = {
   coverShape: oneOf(['rounded', 'square', 'circle']),
   layoutH: num(120, 800),   // último alto de diseño informado por la interfaz (evita parpadeo al iniciar)
   ytNoThrottle: bool,   // YouTube: no frenar la ventana cuando está tapada o en segundo plano
-  videoScale: num(1, 3)   // tamaño del modo video, elegido arrastrando los bordes
+  videoScale: num(1, 3),   // tamaño del modo video, elegido arrastrando los bordes
+  lang: oneOf(['es', 'en'])   // idioma de la interfaz
 };
 const DEFAULTS = { preset: 'classic', bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff', blossoms: false, scale: 1, radius: 28, bgOpacity: 1,
   showCover: true, showArtist: true, showLike: true, showShuffle: true, showRepeat: true, showDevices: true, updateCheck: true, sfx: true, showTime: true, showVolume: true, trackNotice: false, autoStart: false,
-  font: 'inter', btnStyle: 'raised', coverShape: 'rounded', layoutH: 484, ytNoThrottle: false, videoScale: 1 };
+  font: 'inter', btnStyle: 'raised', coverShape: 'rounded', layoutH: 484, ytNoThrottle: false, videoScale: 1, lang: 'es' };
 const sanitize = o => Object.fromEntries(Object.entries(RULES).filter(([k, ok]) => ok(o?.[k])).map(([k]) => [k, o[k]]));
 const cfgFile = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...DEFAULTS }, saveTimer;
@@ -222,11 +234,13 @@ function applyAutoStart(on) {
 function applySettings(next) {
   const resized = next.scale !== settings.scale;
   if (next.autoStart !== settings.autoStart) applyAutoStart(next.autoStart);
+  const langChanged = next.lang !== settings.lang;
   if (next.ytNoThrottle !== settings.ytNoThrottle && win && !win.isDestroyed()) win.webContents.setBackgroundThrottling(!next.ytNoThrottle);
   settings = next;
   persist();
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings', settings);   // vista previa en vivo
   if (resized) applyScale();
+  if (langChanged) { buildTrayMenu(); if (settingsWin && !settingsWin.isDestroyed()) settingsWin.setTitle(M('Ajustes')); }
   return settings;
 }
 
@@ -415,13 +429,13 @@ ipcMain.handle('list:export', async (e, name, items) => {
   if (e.sender !== win?.webContents || !Array.isArray(items) || !items.length || items.length > LIST_MAX) return { error: 'bad' };
   const title = listTxt(name, 60) || 'Lista';
   const lines = items.filter(x => LIST_ID[x?.k]?.test(x.id)).map(x => (x.k === 'spotify' ? 'spotify:track:' : 'youtube:') + x.id + ' | ' + listTxt(x.title, 200) + ' | ' + listTxt(x.sub, 200));
-  const r = await dialog.showSaveDialog(win, { title: 'Exportar lista', defaultPath: title.replace(/[\\/:*?"<>]/g, '_') + '.txt', filters: [{ name: 'Lista de Mini Player', extensions: ['txt'] }] });
+  const r = await dialog.showSaveDialog(win, { title: M('Exportar lista'), defaultPath: title.replace(/[\\/:*?"<>]/g, '_') + '.txt', filters: [{ name: M('Lista de Mini Player'), extensions: ['txt'] }] });
   if (r.canceled || !r.filePath) return null;
   try { fs.writeFileSync(r.filePath, [LIST_HEAD, 'Nombre: ' + title, ...lines, ''].join('\n'), 'utf8'); return { ok: true }; } catch { return { error: 'write' }; }
 });
 ipcMain.handle('list:import', async e => {
   if (e.sender !== win?.webContents) return { error: 'bad' };
-  const r = await dialog.showOpenDialog(win, { title: 'Importar lista', properties: ['openFile'], filters: [{ name: 'Lista de Mini Player', extensions: ['txt'] }] });
+  const r = await dialog.showOpenDialog(win, { title: M('Importar lista'), properties: ['openFile'], filters: [{ name: M('Lista de Mini Player'), extensions: ['txt'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
   try {
     if (fs.statSync(r.filePaths[0]).size > LIST_BYTES) return { error: 'big' };
@@ -437,7 +451,7 @@ const WEBPREFS = { preload: path.join(__dirname, 'preload.js'), contextIsolation
 let settingsWin;
 function openSettings() {
   if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); return settingsWin.focus(); }
-  settingsWin = new BrowserWindow({ width: 400, height: 780, title: 'Ajustes', resizable: false, minimizable: false, maximizable: false, webPreferences: WEBPREFS });
+  settingsWin = new BrowserWindow({ width: 400, height: 780, title: M('Ajustes'), resizable: false, minimizable: false, maximizable: false, webPreferences: WEBPREFS });
   settingsWin.setMenu(null);
   settingsWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   settingsWin.webContents.on('will-navigate', e => e.preventDefault());
@@ -484,7 +498,7 @@ ipcMain.handle('yt:search', async (e, q) => {
 let googleWin;
 ipcMain.on('yt-google', () => {
   if (googleWin && !googleWin.isDestroyed()) { googleWin.show(); return googleWin.focus(); }
-  googleWin = new BrowserWindow({ width: 480, height: 700, title: 'Conectar con Google', autoHideMenuBar: true,
+  googleWin = new BrowserWindow({ width: 480, height: 700, title: M('Conectar con Google'), autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } });
   googleWin.setMenu(null);
   googleWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });

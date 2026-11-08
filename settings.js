@@ -56,6 +56,7 @@ function show(s) {
   for (const b of document.querySelectorAll('#coverShape button')) b.classList.toggle('on', b.dataset.v === s.coverShape);
   $('coverShape').hidden = s.showCover === false;   // sin portada no hay forma que elegir
   $('font').value = s.font; $('btnStyle').value = s.btnStyle; $('ytNoThrottle').checked = !!s.ytNoThrottle;
+  $('lang').value = s.lang || 'es'; window.i18n?.setLang(s.lang);
   $('bgMode').value = s.bgMode; $('bgColor').value = s.bgColor;
   $('accentMode').value = s.accentMode; $('accentColor').value = s.accentColor;
   $('blossoms').checked = !!s.blossoms;
@@ -97,6 +98,8 @@ $('reset').onclick = () => bridge.resetSettings();
 // YouTube: inicio de sesión de Google (ventana aparte) y no frenar la ventana tapada o en segundo plano.
 $('ytGoogle').onclick = () => bridge.ytGoogle();
 $('ytNoThrottle').onchange = () => bridge.setSettings({ ytNoThrottle: $('ytNoThrottle').checked });
+// Idioma de toda la app (reproductor, Ajustes, bandeja y diálogos).
+$('lang').onchange = () => bridge.setSettings({ lang: $('lang').value });
 // Clave de la API de YouTube: se comprueba y se guarda en el proceso principal; acá nunca se vuelve a mostrar.
 const ytKeyState = on => { $('ytKeyMsg').textContent = on ? 'Clave guardada. Para cambiarla, pegá otra; para borrarla, guardá el campo vacío.' : 'Sin clave: el buscador solo busca en Spotify.'; };
 bridge.ytKeyStatus?.().then(ytKeyState);

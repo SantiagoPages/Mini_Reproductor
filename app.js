@@ -127,10 +127,10 @@ function start() {
   const s = document.createElement('script'); s.src = 'https://sdk.scdn.co/spotify-player.js'; document.head.append(s);
 }
 // Mensaje breve de estado/error bajo el título (vacío = sin mensaje).
-let statusTimer;
+let statusTimer, statusNow = '';   // statusNow: el aviso tal como se pidió (en pantalla puede estar traducido)
 const status = (t, ms = 0) => {
-  clearTimeout(statusTimer); $('status').textContent = $('status').title = t || '';   // title: texto completo si no entra
-  if (t && ms) statusTimer = setTimeout(() => { if ($('status').textContent === t) status(''); }, ms);
+  clearTimeout(statusTimer); statusNow = t || ''; $('status').textContent = $('status').title = statusNow;   // title: texto completo si no entra
+  if (t && ms) statusTimer = setTimeout(() => { if (statusNow === t) status(''); }, ms);
 };
 
 /** Refleja el estado del SDK en la interfaz: metadatos, play/pausa, aleatorio, portada y color. */
@@ -431,9 +431,10 @@ bridge.onPacks?.(p => { packs = p; builtId = undefined; applyPack(); });
 // Punto único de entrada para los ajustes: actualiza el estado y repinta todo lo que depende de ellos.
 const applyCfg = s => {
   const noticeOn = cfg.trackNotice === false && s.trackNotice;   // la opción se acaba de activar (no al cargar)
-  cfg = s; setRainbow(s.bgMode === 'rainbow'); applyLook(); applyPack(); paint();
+  cfg = s; window.i18n?.setLang(s.lang); setRainbow(s.bgMode === 'rainbow'); applyLook(); applyPack(); paint();
   // Vista previa: un aviso de ejemplo con los colores del tema, para comprobar que funciona.
-  if (noticeOn) announce({ name: 'Aviso de canción nueva', artists: [{ name: 'Así se verá, abajo a la derecha' }] }, '', true);
+  const tr = t => window.i18n?.tr(t) ?? t;   // la ventanita del aviso no traduce: se le manda el texto ya traducido
+  if (noticeOn) announce({ name: tr('Aviso de canción nueva'), artists: [{ name: tr('Así se verá, abajo a la derecha') }] }, '', true);
 };
 // Alto de diseño: la ventana se ajusta a lo que hay visible. Se informa al proceso principal (que redimensiona).
 // ResizeObserver mide el diseño sin escala, por lo que no depende de --z.
