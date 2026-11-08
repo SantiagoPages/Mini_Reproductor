@@ -22,6 +22,7 @@ files:
   - app.js
   - style.css
   - themes.js
+  - i18n.js
   - settings.html
   - settings.js
   - settings.css

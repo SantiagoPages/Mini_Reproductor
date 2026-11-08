@@ -38,6 +38,47 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--fg);outline-off
 body.trio #title{color:var(--det)}
 body.trio #cover{outline:2px solid var(--det)}
 body.trio #play{background:var(--accent);color:var(--accent-fg)}
+/* La portada se pinta desde --cov (la fija app.js por CSSOM). */
+#cover{position:relative;overflow:hidden;isolation:isolate;background-image:var(--cov)}
+/* YouTube: el reproductor oficial ocupa el recuadro de la portada. Siempre visible, sin recortes en círculo y con nada
+   encima (ni decoraciones ni listas): así lo exigen los términos de YouTube. */
+#ytbox{position:absolute;inset:0;z-index:2;background:#000}
+#ytbox iframe{display:block;width:100%;height:100%;border:0}
+body.yt #cover{display:block;border-radius:16px}
+body.yt #dev,body:not(.yt) #rate{display:none}
+/* Cursor de cambio de tamaño en los bordes del modo video (lo fija app.js). */
+html[data-rz=n] *,html[data-rz=s] *{cursor:ns-resize!important}
+html[data-rz=e] *,html[data-rz=w] *{cursor:ew-resize!important}
+html[data-rz=ne] *,html[data-rz=sw] *{cursor:nesw-resize!important}
+html[data-rz=nw] *,html[data-rz=se] *{cursor:nwse-resize!important}
+/* Modo video chico: tarjeta de 384 px, pantalla 16:9 de 356×200 arriba y controles abajo. */
+#player.video{width:384px;padding:14px 14px 24px}   /* abajo queda lugar para el aviso de una línea */
+#player.video #top{margin-top:-2px}
+#player.video #vidbtn{display:none}
+[data-btn=wheel] #player.video #volbox{display:flex}   /* en modo video no hay rueda: el volumen va arriba */
+#player.video #cover{display:block;width:356px;height:200px;border-radius:14px;background-image:none}
+/* Botón de modo video: junto al título, del mismo tamaño que el +. */
+#vidbtn{width:34px;height:34px;flex:none}
+#vidbtn svg{width:17px;height:17px}
+/* Modo "solo video": queda el video con un marco fino y, debajo, un botón para volver a los controles. */
+#soloBar{display:none;justify-content:center;margin-top:6px;opacity:.55;transition:opacity .2s}
+#soloBar:hover{opacity:1}
+#player.solo{padding:8px 8px 6px}
+#player.solo #cover{width:368px;height:207px;border-radius:12px}
+#player.solo #soloBar{display:flex}
+#player.video.solo :is(#top,#upd,#devs,#pick,#info,#time,#ctlV,#status){display:none}
+/* Con una canción de Spotify, la portada entera va al centro y los costados muestran la misma portada difuminada. */
+#player.video #cover::before,#player.video #cover::after{content:"";position:absolute;inset:0;background:var(--cov) center/contain no-repeat}
+#player.video #cover::before{inset:-24px;background-size:cover;filter:blur(18px) brightness(.7)}
+#player.video #info{margin-top:12px}
+#player.video #title{font-size:16px}
+#player.video #time{margin-top:8px}
+#player.video #ctl,#player.video #wheel{display:none}
+#ctlV{display:none;margin-top:12px;align-items:center;gap:6px}
+#player.video #ctlV{display:flex}
+#ctlV .gap{flex:1}
+.md{width:40px;height:40px}.md svg{width:18px;height:18px}
+.rate{font:inherit;font-size:13px;font-weight:650}
 #title{margin-top:16px;font-size:17px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #artist{margin-top:2px;font-size:13px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #time{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:11px;font-variant-numeric:tabular-nums;opacity:.85}
@@ -102,7 +143,7 @@ svg{width:22px;height:22px;fill:currentColor}.lg svg{width:30px;height:30px}.min
 @keyframes fall{0%{transform:translate(0,-24px) rotate(0)}50%{transform:translate(var(--sw),240px) rotate(180deg)}100%{transform:translate(calc(var(--sw) * -.5),500px) rotate(360deg)}}
 .paused #petals i{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){#petals{display:none}}
-#status{position:absolute;left:20px;right:20px;bottom:4px}
+#status{position:absolute;left:20px;right:20px;bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* una sola línea: nunca invade los botones */
 
 /* ---- Qué se muestra (clases en <body>, ver applyLook en app.js) ---- */
 .no-cover #cover{display:none}
@@ -153,9 +194,9 @@ svg{width:22px;height:22px;fill:currentColor}.lg svg{width:30px;height:30px}.min
 #tabs{overflow-x:auto;scrollbar-width:none}
 #tabs{gap:4px}
 #tabs button{flex:auto;padding:6px 5px;font-size:11px;white-space:nowrap}
-#ranges{display:flex;gap:6px;flex:none}
-#ranges button{flex:1;padding:4px;border:0;border-radius:8px;background:none;color:var(--fg);font:inherit;font-size:11px;opacity:.7;cursor:pointer;border-bottom:2px solid transparent}
-#ranges button.on{opacity:1;border-bottom-color:var(--accent)}
+#ranges,#srcs,#hsrc{display:flex;gap:6px;flex:none}
+#ranges button,#srcs button,#hsrc button{flex:1;padding:4px;border:0;border-radius:8px;background:none;color:var(--fg);font:inherit;font-size:11px;opacity:.7;cursor:pointer;border-bottom:2px solid transparent}
+#ranges button.on,#srcs button.on,#hsrc button.on{opacity:1;border-bottom-color:var(--accent)}
 #devs{position:absolute;z-index:5;top:48px;left:12px;right:12px;max-height:calc(100% - 60px);overflow-y:auto;list-style:none;padding:6px;border-radius:14px;
  background:color-mix(in srgb,var(--bg),#000 35%);box-shadow:0 10px 28px rgba(0,0,0,.5)}
 #devs .it.cur .tx b{color:var(--accent)}
@@ -190,4 +231,18 @@ svg{width:22px;height:22px;fill:currentColor}.lg svg{width:30px;height:30px}.min
 #picklist .it.cur .tx b{color:var(--accent)}
 #tabs{gap:2px}
 #tabs button{padding:6px 3px;font-size:10.5px}
-#tabs button svg{width:13px;height:13px;fill:currentColor;display:block;margin:0 3px}
+#tabs button svg{width:13px;height:13px;fill:currentColor;display:block;margin:0 auto}
+/* ---- Listas propias ---- */
+#list .lbar,#picklist .lbar{display:flex;flex-wrap:wrap;gap:6px;padding:4px 2px}   /* si no entran, los botones bajan a otra fila */
+.lbar button{flex:1 1 auto;padding:6px 8px;border:0;border-radius:8px;background:var(--btn);color:var(--fg);font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
+.lbar button:hover{background:color-mix(in srgb,var(--btn),#000 25%)}
+.lbar input{flex:3;min-width:0;padding:6px 10px;font-size:12px}
+/* Origen de cada elemento: punto verde (Spotify) o rojo (YouTube) en la esquina de la miniatura. */
+.it .th{position:relative}
+.srcdot{position:absolute;right:-3px;bottom:-3px;width:11px;height:11px;border-radius:50%;box-shadow:0 0 0 2px rgba(0,0,0,.45)}
+.srcdot.sp{background:#1db954}.srcdot.yt{background:#ff2b2b}
+/* Subir, bajar y quitar: aparecen al pasar el mouse (o con el foco del teclado). */
+.it .lc{display:none;gap:2px;flex:none}
+.it:hover .lc,.it:focus-within .lc{display:flex}
+.lc button{width:22px;height:22px;padding:0;border:0;border-radius:6px;background:var(--btn);color:var(--fg);font-size:10px;cursor:pointer}
+.lc button:hover{background:color-mix(in srgb,var(--btn),#000 25%)}

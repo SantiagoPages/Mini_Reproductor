@@ -20,6 +20,7 @@ const FILES = {
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/themes.js': ['themes.js', 'text/javascript; charset=utf-8'],
+  '/i18n.js': ['i18n.js', 'text/javascript; charset=utf-8'],
   '/settings.html': ['settings.html', 'text/html; charset=utf-8'],
   '/settings.js': ['settings.js', 'text/javascript; charset=utf-8'],
   '/settings.css': ['settings.css', 'text/css; charset=utf-8'],
@@ -36,14 +37,17 @@ const FILES = {
 };
 // Content-Security-Policy de la interfaz. connect-src e img-src admiten https genérico porque
 // Spotify distribuye API, portadas y licencias DRM desde múltiples hosts; los scripts quedan
-// restringidos al propio origen y al SDK oficial.
-const CSP = "default-src 'self'; script-src 'self' https://sdk.scdn.co; style-src 'self'; img-src 'self' data: https:; " +
-  "connect-src https: wss:; frame-src https://sdk.scdn.co; media-src https: blob:; object-src 'none'; base-uri 'none'; form-action 'none'";
+// restringidos al propio origen, al SDK oficial de Spotify y a la API oficial del reproductor de YouTube.
+const CSP = "default-src 'self'; script-src 'self' https://sdk.scdn.co https://www.youtube.com https://s.ytimg.com; style-src 'self'; img-src 'self' data: https:; " +
+  "connect-src https: wss:; frame-src https://sdk.scdn.co https://www.youtube.com; media-src https: blob:; object-src 'none'; base-uri 'none'; form-action 'none'";
 // Ventana única de la aplicación.
 // Tamaño base de la interfaz (px CSS). La ventana mide BASE x escala; WIN es el tamaño vigente.
-// El alto base (BASE.height) lo informa la interfaz según los elementos visibles (ver 'layout-height').
+// El alto base (BASE.height) lo informa la interfaz según los elementos visibles (ver 'layout-height'); el ancho
+// base es 280 (modo música) o 384 (modo video), también informado por la interfaz (ver 'layout-width').
 const BASE = { width: 280, height: 484 };
 const WIN = { ...BASE };
+// Escala mínima pedida por la interfaz: con un video de YouTube el reproductor debe verse de al menos 200 px.
+let minZ = 0;
 const sizeFor = s => ({ width: Math.round(BASE.width * s), height: Math.round(BASE.height * s) });
 // La escala nunca supera lo que entra en el área útil del monitor (sin barra de tareas).
 const fitScale = (s, area) => Math.max(.5, Math.min(s, (area.height - 16) / BASE.height, (area.width - 16) / BASE.width));
@@ -83,7 +87,7 @@ function serve() {
     if (u.pathname === '/' && (u.searchParams.has('code') || u.searchParams.has('error'))) {
       win?.webContents.send('auth', { code: u.searchParams.get('code'), state: u.searchParams.get('state'), error: u.searchParams.get('error') });
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end('<meta charset="utf-8"><title>Listo</title><body style="font:16px sans-serif;background:#1b1535;color:#fff;display:grid;place-items:center;height:100vh;margin:0">Listo, ya podés volver al reproductor.');
+      return res.end('<meta charset="utf-8"><title>' + M('Listo') + '</title><body style="font:16px sans-serif;background:#1b1535;color:#fff;display:grid;place-items:center;height:100vh;margin:0">' + M('Listo, ya podés volver al reproductor.'));
     }
     const f = FILES[u.pathname];
     if (!f) { res.writeHead(404); return res.end(); }
@@ -93,7 +97,7 @@ function serve() {
       res.end(d);
     });
   }).on('error', () => {
-    dialog.showErrorBox('Mini Player', `El puerto ${PORT} está ocupado por otro programa. Cerralo y volvé a abrir la app.`);
+    dialog.showErrorBox('Mini Player', M('El puerto {0} está ocupado por otro programa. Cerralo y volvé a abrir la app.', PORT));
     app.quit();
   }).listen(PORT, '127.0.0.1', ok));
 }
@@ -109,8 +113,9 @@ ipcMain.handle('session:save', (e, s) => {
 ipcMain.handle('session:clear', () => fs.rmSync(sf(), { force: true }));
 // Descarga de portadas en el proceso principal (solo desde el CDN de Spotify), entregadas como
 // data URL: evita restricciones CORS al leer los píxeles en canvas para el color dominante.
+// También las miniaturas de YouTube (solo i.ytimg.com con un ID de video válido).
 ipcMain.handle('cover', async (e, url) => {
-  if (typeof url !== 'string' || !url.startsWith('https://i.scdn.co/image/')) return null;
+  if (typeof url !== 'string' || !(url.startsWith('https://i.scdn.co/image/') || /^https:\/\/i\.ytimg\.com\/vi\/[\w-]{11}\/(hq|mq|sd|maxres)default\.jpg$/.test(url))) return null;
   try { const r = await fetch(url); return 'data:image/jpeg;base64,' + Buffer.from(await r.arrayBuffer()).toString('base64'); } catch { return null; }
 });
 // Abre el login en el navegador del sistema; se valida el destino para no actuar como redirector abierto.
@@ -126,6 +131,12 @@ ipcMain.handle('pin', () => { const v = !win.isAlwaysOnTop(); setPin(v); return 
 ipcMain.on('now', (e, title, artist) => {
   if (typeof title === 'string' && typeof artist === 'string') tray?.setToolTip(`${artist} — ${title}`.slice(0, 120));
 });
+// Textos del proceso principal (bandeja, diálogos, avisos) en el idioma elegido; la interfaz traduce los suyos con i18n.js.
+const MAIN_EN = { 'Mostrar / Ocultar': 'Show / Hide', 'Ajustes…': 'Settings…', 'Siempre encima': 'Always on top', 'Salir': 'Quit',
+  'Exportar lista': 'Export list', 'Importar lista': 'Import list', 'Lista de Mini Player': 'Mini Player list', 'Ajustes': 'Settings',
+  'Conectar con Google': 'Connect to Google', 'Listo': 'Done', 'Listo, ya podés volver al reproductor.': 'Done, you can go back to the player.',
+  'El puerto {0} está ocupado por otro programa. Cerralo y volvé a abrir la app.': 'Port {0} is in use by another program. Close it and reopen the app.' };
+const M = (s, ...a) => (settings.lang === 'en' ? MAIN_EN[s] ?? s : s).replace(/\{(\d)\}/g, (x, i) => a[i]);
 // Ícono de bandeja con menú contextual. Si falta el recurso gráfico, la aplicación continúa sin bandeja.
 function setupTray() {
   const img = nativeImage.createFromPath(path.join(__dirname, 'icon.png'));
@@ -134,15 +145,19 @@ function setupTray() {
   tray.setToolTip('Mini Player');
   const toggle = () => { if (win.isVisible()) win.hide(); else { win.show(); win.focus(); } };
   tray.on('click', toggle);
-  menu = Menu.buildFromTemplate([
-    { label: 'Mostrar / Ocultar', click: toggle },
-    { label: 'Ajustes…', click: openSettings },
-    { id: 'pin', label: 'Siempre encima', type: 'checkbox', checked: false, click: m => setPin(m.checked) },
-    { type: 'separator' },
-    { label: 'Salir', click: () => app.quit() }
-  ]);
-  tray.setContextMenu(menu);
+  buildTrayMenu = () => {
+    menu = Menu.buildFromTemplate([
+      { label: M('Mostrar / Ocultar'), click: toggle },
+      { label: M('Ajustes…'), click: openSettings },
+      { id: 'pin', label: M('Siempre encima'), type: 'checkbox', checked: !!win?.isAlwaysOnTop(), click: m => setPin(m.checked) },
+      { type: 'separator' },
+      { label: M('Salir'), click: () => app.quit() }
+    ]);
+    tray.setContextMenu(menu);
+  };
+  buildTrayMenu();
 }
+let buildTrayMenu = () => {};   // se reemplaza al crear la bandeja; se vuelve a llamar al cambiar el idioma
 // Teclas multimedia globales (activas con la aplicación en segundo plano); se reenvían al renderer.
 function registerMediaKeys() {
   if (IS_LINUX) return;   // las gestiona el sistema vía MPRIS (ver arriba)
@@ -182,11 +197,14 @@ const RULES = {
   font: oneOf(['inter', 'nunito', 'mono', 'outfit', 'dyslexic']),
   btnStyle: oneOf(['raised', 'flat', 'outline', 'icon', 'wheel']),
   coverShape: oneOf(['rounded', 'square', 'circle']),
-  layoutH: num(120, 800)   // último alto de diseño informado por la interfaz (evita parpadeo al iniciar)
+  layoutH: num(120, 800),   // último alto de diseño informado por la interfaz (evita parpadeo al iniciar)
+  ytNoThrottle: bool,   // YouTube: no frenar la ventana cuando está tapada o en segundo plano
+  videoScale: num(1, 3),   // tamaño del modo video, elegido arrastrando los bordes
+  lang: oneOf(['es', 'en'])   // idioma de la interfaz
 };
 const DEFAULTS = { preset: 'classic', bgMode: 'dynamic', bgColor: '#2a2060', accentMode: 'white', accentColor: '#ffffff', blossoms: false, scale: 1, radius: 28, bgOpacity: 1,
   showCover: true, showArtist: true, showLike: true, showShuffle: true, showRepeat: true, showDevices: true, updateCheck: true, sfx: true, showTime: true, showVolume: true, trackNotice: false, autoStart: false,
-  font: 'inter', btnStyle: 'raised', coverShape: 'rounded', layoutH: 484 };
+  font: 'inter', btnStyle: 'raised', coverShape: 'rounded', layoutH: 484, ytNoThrottle: false, videoScale: 1, lang: 'es' };
 const sanitize = o => Object.fromEntries(Object.entries(RULES).filter(([k, ok]) => ok(o?.[k])).map(([k]) => [k, o[k]]));
 const cfgFile = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...DEFAULTS }, saveTimer;
@@ -216,10 +234,13 @@ function applyAutoStart(on) {
 function applySettings(next) {
   const resized = next.scale !== settings.scale;
   if (next.autoStart !== settings.autoStart) applyAutoStart(next.autoStart);
+  const langChanged = next.lang !== settings.lang;
+  if (next.ytNoThrottle !== settings.ytNoThrottle && win && !win.isDestroyed()) win.webContents.setBackgroundThrottling(!next.ytNoThrottle);
   settings = next;
   persist();
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings', settings);   // vista previa en vivo
   if (resized) applyScale();
+  if (langChanged) { buildTrayMenu(); if (settingsWin && !settingsWin.isDestroyed()) settingsWin.setTitle(M('Ajustes')); }
   return settings;
 }
 
@@ -230,7 +251,8 @@ function applySettings(next) {
 function applyScale(keepTop = false) {
   if (!win || win.isDestroyed()) return;
   const b = win.getBounds(), area = screen.getDisplayMatching(b).workArea;
-  const size = sizeFor(fitScale(settings.scale, area));
+  // El modo video (ancho 384) tiene su propio tamaño, elegido desde los bordes; el modo música usa el de Ajustes.
+  const size = sizeFor(fitScale(Math.max(BASE.width === 384 ? settings.videoScale : settings.scale, minZ), area));
   Object.assign(WIN, size);
   const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
   const x = clamp(Math.round(b.x + b.width / 2 - size.width / 2), area.x, area.x + area.width - size.width);
@@ -244,6 +266,26 @@ ipcMain.on('layout-height', (e, h) => {
   h = Math.round(h); if (h === BASE.height) return;
   BASE.height = h; settings = { ...settings, layoutH: h }; persist(); applyScale(true);
 });
+// Ancho de diseño (modo música o modo video) y escala mínima para que el video de YouTube se vea de 200 px o más.
+ipcMain.on('layout-width', (e, w, z) => {
+  if (e.sender !== win?.webContents || ![280, 384].includes(w) || !num(0, 1)(z)) return;
+  if (w === BASE.width && z === minZ) return;
+  BASE.width = w; minZ = z; applyScale(true);
+});
+// Cambio de tamaño del modo video desde los bordes: la interfaz envía la escala deseada y qué borde se arrastra; el
+// borde opuesto queda fijo. Al soltar se guarda el tamaño.
+let rzFrom = null;
+ipcMain.on('vresize-start', e => { if (e.sender === win?.webContents && BASE.width === 384) rzFrom = win.getBounds(); });
+ipcMain.on('vresize', (e, z, left, top) => {
+  if (e.sender !== win?.webContents || !rzFrom || !num(.5, 4)(z) || typeof left !== 'boolean' || typeof top !== 'boolean') return;
+  const area = screen.getDisplayMatching(rzFrom).workArea;
+  z = Math.min(3, Math.max(1, z));
+  const size = sizeFor(fitScale(Math.max(z, minZ), area));
+  Object.assign(WIN, size); settings = { ...settings, videoScale: size.width / BASE.width };
+  const x = left ? rzFrom.x + rzFrom.width - size.width : rzFrom.x, y = top ? rzFrom.y + rzFrom.height - size.height : rzFrom.y;
+  win.setResizable(true); win.setBounds({ x, y, ...size }); win.setResizable(false);
+});
+ipcMain.on('vresize-end', e => { if (e.sender === win?.webContents && rzFrom) { rzFrom = null; persist(); } });
 // ---------- Aviso de actualizaciones ----------
 // Consulta la última release publicada en GitHub (solo lectura, sin credenciales) y avisa si es más nueva.
 // No descarga ni instala nada: el botón abre la página de la release en el navegador. El renderer no envía
@@ -357,6 +399,49 @@ ipcMain.on('announce', (e, d) => {
     bg: bgOk(d?.bg) ? d.bg : '#2a2060', fg: ['#fff', '#16181d'].includes(d?.fg) ? d.fg : '#fff',
     accent: accentOk(d?.accent) ? d.accent : 'rgb(255 255 255)' });
 });
+// ---------- Listas propias: exportar e importar archivos .txt ----------
+// Formato de texto plano, legible y editable a mano:
+//   MINIPLAYER-PLAYLIST 1
+//   Nombre: Para el viaje
+//   spotify:track:<22 caracteres> | Título | Artista
+//   youtube:<11 caracteres> | Título | Canal
+// Un archivo importado es siempre dato no confiable: se lee como texto (máximo 256 KB), cada línea debe cumplir un
+// patrón estricto, se quitan los caracteres de control y de inversión de texto, se limitan largos y cantidad (500) y
+// las líneas inválidas se descartan y se cuentan. El archivo no puede traer URLs ni imágenes: las miniaturas se arman
+// desde el ID. La interfaz muestra todo con textContent.
+const LIST_HEAD = 'MINIPLAYER-PLAYLIST 1', LIST_MAX = 500, LIST_BYTES = 256 * 1024;
+const LIST_ID = { spotify: /^[A-Za-z0-9]{22}$/, youtube: /^[\w-]{11}$/ };
+const listTxt = (t, n) => String(t ?? '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, '').replace(/\|/g, '/').trim().slice(0, n);
+/** Convierte el texto de un archivo de lista en { name, items, skipped } o { error }. */
+function parseList(text) {
+  const lines = String(text).split(/\r\n|\n|\r/).map(l => l.trim()).filter(Boolean);
+  if (lines[0]?.replace(/^﻿/, '') !== LIST_HEAD) return { error: 'format' };
+  let name = '', skipped = 0; const items = [];
+  for (const l of lines.slice(1)) {
+    if (!name && /^Nombre:/i.test(l)) { name = listTxt(l.slice(7), 60); continue; }
+    const m = l.length <= 600 && l.match(/^(?:spotify:track:([A-Za-z0-9]{22})|youtube:([\w-]{11}))\s*(?:\|([^|]*))?(?:\|([^|]*))?$/);
+    if (!m || items.length >= LIST_MAX) { skipped++; continue; }
+    items.push({ k: m[1] ? 'spotify' : 'youtube', id: m[1] || m[2], title: listTxt(m[3], 200), sub: listTxt(m[4], 200) });
+  }
+  return { name, items, skipped };
+}
+ipcMain.handle('list:export', async (e, name, items) => {
+  if (e.sender !== win?.webContents || !Array.isArray(items) || !items.length || items.length > LIST_MAX) return { error: 'bad' };
+  const title = listTxt(name, 60) || 'Lista';
+  const lines = items.filter(x => LIST_ID[x?.k]?.test(x.id)).map(x => (x.k === 'spotify' ? 'spotify:track:' : 'youtube:') + x.id + ' | ' + listTxt(x.title, 200) + ' | ' + listTxt(x.sub, 200));
+  const r = await dialog.showSaveDialog(win, { title: M('Exportar lista'), defaultPath: title.replace(/[\\/:*?"<>]/g, '_') + '.txt', filters: [{ name: M('Lista de Mini Player'), extensions: ['txt'] }] });
+  if (r.canceled || !r.filePath) return null;
+  try { fs.writeFileSync(r.filePath, [LIST_HEAD, 'Nombre: ' + title, ...lines, ''].join('\n'), 'utf8'); return { ok: true }; } catch { return { error: 'write' }; }
+});
+ipcMain.handle('list:import', async e => {
+  if (e.sender !== win?.webContents) return { error: 'bad' };
+  const r = await dialog.showOpenDialog(win, { title: M('Importar lista'), properties: ['openFile'], filters: [{ name: M('Lista de Mini Player'), extensions: ['txt'] }] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  try {
+    if (fs.statSync(r.filePaths[0]).size > LIST_BYTES) return { error: 'big' };
+    return parseList(fs.readFileSync(r.filePaths[0], 'utf8'));
+  } catch { return { error: 'read' }; }
+});
 ipcMain.handle('settings:get', () => settings);
 ipcMain.handle('settings:set', (e, partial) => applySettings({ ...settings, ...sanitize(partial) }));
 ipcMain.handle('settings:reset', () => applySettings({ ...DEFAULTS, layoutH: settings.layoutH }));
@@ -366,13 +451,63 @@ const WEBPREFS = { preload: path.join(__dirname, 'preload.js'), contextIsolation
 let settingsWin;
 function openSettings() {
   if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); return settingsWin.focus(); }
-  settingsWin = new BrowserWindow({ width: 400, height: 780, title: 'Ajustes', resizable: false, minimizable: false, maximizable: false, webPreferences: WEBPREFS });
+  settingsWin = new BrowserWindow({ width: 400, height: 780, title: M('Ajustes'), resizable: false, minimizable: false, maximizable: false, webPreferences: WEBPREFS });
   settingsWin.setMenu(null);
   settingsWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   settingsWin.webContents.on('will-navigate', e => e.preventDefault());
   settingsWin.loadURL(ORIGIN + '/settings.html');
 }
 ipcMain.on('open-settings', openSettings);
+// ---------- Búsqueda en YouTube (YouTube Data API v3 con la clave del propio usuario) ----------
+// La app no trae ninguna clave: cada usuario crea la suya gratis en Google Cloud. Se guarda cifrada con safeStorage y
+// nunca sale del proceso principal (la interfaz solo pide búsquedas y recibe resultados ya depurados). Cada búsqueda
+// gasta 100 unidades del cupo diario de 10.000 (unas 100 búsquedas por día).
+const ytKeyFile = () => path.join(app.getPath('userData'), 'youtube-key.bin');
+const readYtKey = () => { try { return safeStorage.decryptString(fs.readFileSync(ytKeyFile())); } catch { return ''; } };
+const YT_API = 'https://www.googleapis.com/youtube/v3/';
+ipcMain.handle('ytkey:status', () => !!readYtKey());
+// Guarda la clave tras comprobarla con un pedido barato (1 unidad). Una clave vacía la borra.
+ipcMain.handle('ytkey:set', async (e, key) => {
+  if (key === '') { fs.rmSync(ytKeyFile(), { force: true }); return { ok: true, removed: true }; }
+  if (typeof key !== 'string' || !/^[A-Za-z0-9_-]{30,60}$/.test(key.trim())) return { ok: false, why: 'format' };
+  key = key.trim();
+  try {
+    const r = await fetch(YT_API + 'videos?part=id&id=jNQXAC9IVRw&key=' + encodeURIComponent(key));
+    if (!r.ok) return { ok: false, why: r.status === 403 ? 'forbidden' : 'invalid' };
+  } catch { return { ok: false, why: 'net' }; }
+  if (!safeStorage.isEncryptionAvailable()) return { ok: false, why: 'storage' };
+  fs.writeFileSync(ytKeyFile(), safeStorage.encryptString(key)); return { ok: true };
+});
+ipcMain.on('ytkey-help', () => shell.openExternal('https://console.cloud.google.com/apis/library/youtube.googleapis.com'));
+// La API devuelve textos con entidades HTML (&amp;, &#39;…): se convierten a texto plano (la interfaz usa textContent).
+const ytText = t => String(t).replace(/&(amp|lt|gt|quot|#39|#x27);/g, (m, k) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", '#x27': "'" })[k]).slice(0, 200);
+ipcMain.handle('yt:search', async (e, q) => {
+  if (e.sender !== win?.webContents || typeof q !== 'string' || !q.trim() || q.length > 100) return { error: 'bad' };
+  const key = readYtKey(); if (!key) return { error: 'nokey' };
+  // Solo videos que se pueden ver dentro de otras apps (videoEmbeddable), para no listar los que darían error.
+  const u = YT_API + 'search?' + new URLSearchParams({ part: 'snippet', type: 'video', videoEmbeddable: 'true', maxResults: '10', q: q.trim(), key });
+  try {
+    const r = await fetch(u);
+    if (!r.ok) return { error: r.status === 403 ? 'quota' : 'http', status: r.status };
+    const d = await r.json();
+    return { items: (d.items || []).filter(x => /^[\w-]{11}$/.test(x?.id?.videoId || '')).map(x => ({ id: x.id.videoId, title: ytText(x.snippet?.title || ''), channel: ytText(x.snippet?.channelTitle || '') })) };
+  } catch { return { error: 'net' }; }
+});
+// Inicio de sesión de Google para YouTube, en una ventana aparte con la misma sesión que el reproductor (así el video
+// embebido usa esa cuenta). No se cambia el agente de usuario ni se intenta esquivar ningún bloqueo de Google.
+let googleWin;
+ipcMain.on('yt-google', () => {
+  if (googleWin && !googleWin.isDestroyed()) { googleWin.show(); return googleWin.focus(); }
+  googleWin = new BrowserWindow({ width: 480, height: 700, title: M('Conectar con Google'), autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } });
+  googleWin.setMenu(null);
+  googleWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  // Al terminar, Google redirige a YouTube: se cierra la ventana y se avisa al reproductor.
+  googleWin.webContents.on('did-navigate', (ev, url) => {
+    if (new URL(url).hostname === 'www.youtube.com') { googleWin.close(); win?.webContents.send('yt-login'); }
+  });
+  googleWin.loadURL('https://accounts.google.com/ServiceLogin?continue=' + encodeURIComponent('https://www.youtube.com/'));
+});
 // Acciones del asistente de configuración. No reciben parámetros del renderer: no hay entrada que validar.
 ipcMain.on('open-dashboard', () => shell.openExternal('https://developer.spotify.com/dashboard'));
 ipcMain.on('copy-redirect', () => clipboard.writeText(ORIGIN + '/'));
@@ -455,10 +590,14 @@ app.whenReady().then(async () => {
   win = new BrowserWindow({
     ...start, show: !(HIDDEN && tray), frame: false, transparent: true, resizable: false, hasShadow: false,
     backgroundColor: '#00000000',
-    webPreferences: WEBPREFS
+    webPreferences: { ...WEBPREFS, backgroundThrottling: !settings.ytNoThrottle }
   });
-  // Se bloquean ventanas nuevas y la navegación fuera de la interfaz.
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Se bloquean ventanas nuevas y la navegación fuera de la interfaz. Los enlaces del reproductor de YouTube
+  // (por ejemplo «Ver en YouTube») se abren en el navegador del sistema.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
   win.webContents.on('will-navigate', e => e.preventDefault());
   // El reproductor es la ventana principal: al cerrarlo se cierra todo, incluida la de ajustes.
   win.on('closed', () => app.quit());
@@ -470,5 +609,5 @@ app.whenReady().then(async () => {
     console.error('Aviso: no hay almacén de claves (en Ubuntu, instalar/desbloquear gnome-keyring); la sesión de Spotify no se recordará.');
 });
 // Red de seguridad: al salir se destruyen la ventana de ajustes y la del aviso aunque sigan abiertas.
-app.on('before-quit', () => { flushState(); for (const w of [settingsWin, toastWin]) if (w && !w.isDestroyed()) w.destroy(); });
+app.on('before-quit', () => { flushState(); for (const w of [settingsWin, toastWin, googleWin]) if (w && !w.isDestroyed()) w.destroy(); });
 app.on('window-all-closed', () => app.quit());
